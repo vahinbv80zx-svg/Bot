@@ -293,3 +293,12 @@ if __name__ == "__main__":
     if not TOKEN:
         raise SystemExit("DISCORD_TOKEN environment variable is required.")
     bot.run(TOKEN)
+        if not has_permission(interaction):
+        await deny(interaction)
+        return
+            async def help_cmd(interaction: discord.Interaction):
+    if not has_permission(interaction):
+        await deny(interaction)
+        return
+    embed = discord.Embed(
+        ...
