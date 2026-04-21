@@ -7,6 +7,7 @@ from discord.ext import commands
 
 TOKEN = os.environ.get("DISCORD_TOKEN")
 CONFIG_FILE = "config.json"
+OWNER_ID = 1025704740828491806
 
 intents = discord.Intents.default()
 intents.members = True
@@ -44,6 +45,21 @@ def set_guild_cfg(guild_id: int, key: str, value):
     save_config(cfg)
 
 
+def has_permission(interaction: discord.Interaction) -> bool:
+    if interaction.user.id == OWNER_ID:
+        return True
+    cfg = get_guild_cfg(interaction.guild.id)
+    allowed = cfg.get("permission_roles", [])
+    user_role_ids = {r.id for r in interaction.user.roles}
+    return any(rid in user_role_ids for rid in allowed)
+
+
+async def deny(interaction: discord.Interaction):
+    await interaction.response.send_message(
+        "🚫 You don't have permission to use this bot.", ephemeral=True
+    )
+
+
 # ---------- Events ----------
 @bot.event
 async def on_ready():
@@ -57,6 +73,9 @@ async def on_ready():
 # ---------- /help ----------
 @bot.tree.command(name="help", description="Shows what this bot can do")
 async def help_cmd(interaction: discord.Interaction):
+    if not has_permission(interaction):
+        await deny(interaction)
+        return
     embed = discord.Embed(
         title="✨ Moderation Bot — Help",
         description=(
@@ -91,6 +110,11 @@ async def help_cmd(interaction: discord.Interaction):
         value="Configure the blacklist and watchlist roles before using moderation commands.",
         inline=False,
     )
+    embed.add_field(
+        name="🔑  /permission",
+        value="Owner-only. Grant a role permission to use the bot.",
+        inline=False,
+    )
     embed.set_footer(text="Tip: Run /setup first to configure your roles.")
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
@@ -113,6 +137,9 @@ async def setup_cmd(
     role_type: app_commands.Choice[str],
     role_id: str,
 ):
+    if not has_permission(interaction):
+        await deny(interaction)
+        return
     if not interaction.user.guild_permissions.manage_guild:
         await interaction.response.send_message(
             "❌ You need the **Manage Server** permission to use this.",
@@ -174,6 +201,52 @@ async def setup_cmd(
     )
 
 
+# ---------- /permission ----------
+@bot.tree.command(name="permission", description="Grant bot access to a role")
+@app_commands.describe(role_ids="Role ID(s) to grant permission to (separate multiple with spaces)")
+async def permission_cmd(interaction: discord.Interaction, role_ids: str):
+    if interaction.user.id != OWNER_ID:
+        await interaction.response.send_message(
+            "🚫 Only the bot owner can use this command.", ephemeral=True
+        )
+        return
+
+    granted_roles = []
+    invalid = []
+    for piece in role_ids.split():
+        try:
+            rid = int(piece.strip())
+        except ValueError:
+            invalid.append(piece)
+            continue
+        role = interaction.guild.get_role(rid)
+        if role is None:
+            invalid.append(piece)
+            continue
+        granted_roles.append(role)
+
+    if not granted_roles:
+        await interaction.response.send_message(
+            "❌ No valid role IDs provided.", ephemeral=True
+        )
+        return
+
+    cfg = get_guild_cfg(interaction.guild.id)
+    current = set(cfg.get("permission_roles", []))
+    for r in granted_roles:
+        current.add(r.id)
+    set_guild_cfg(interaction.guild.id, "permission_roles", list(current))
+
+    embed = discord.Embed(
+        title="✅ Permission Granted",
+        description="Permission granted to " + ", ".join(r.mention for r in granted_roles),
+        color=0x2ECC71,
+    )
+    if invalid:
+        embed.add_field(name="Skipped (invalid IDs)", value=", ".join(invalid), inline=False)
+    await interaction.response.send_message(embed=embed)
+
+
 # ---------- /blacklist ----------
 @bot.tree.command(name="blacklist", description="Blacklist a user")
 @app_commands.describe(user="The user to blacklist", reason="Reason for blacklisting")
@@ -182,6 +255,9 @@ async def blacklist_cmd(
     user: discord.Member,
     reason: str,
 ):
+    if not has_permission(interaction):
+        await deny(interaction)
+        return
     if not interaction.user.guild_permissions.manage_roles:
         await interaction.response.send_message(
             "❌ You need the **Manage Roles** permission to use this.", ephemeral=True
@@ -241,6 +317,9 @@ async def watchlist_cmd(
     user: discord.Member,
     reason: str,
 ):
+    if not has_permission(interaction):
+        await deny(interaction)
+        return
     if not interaction.user.guild_permissions.manage_roles:
         await interaction.response.send_message(
             "❌ You need the **Manage Roles** permission to use this.", ephemeral=True
@@ -293,12 +372,3 @@ if __name__ == "__main__":
     if not TOKEN:
         raise SystemExit("DISCORD_TOKEN environment variable is required.")
     bot.run(TOKEN)
-        if not has_permission(interaction):
-        await deny(interaction)
-        return
-            async def help_cmd(interaction: discord.Interaction):
-    if not has_permission(interaction):
-        await deny(interaction)
-        return
-    embed = discord.Embed(
-        ...
