@@ -9,8 +9,8 @@ TOKEN = os.environ.get("DISCORD_TOKEN")
 CONFIG_FILE = "config.json"
 OWNER_ID = 1025704740828491806
 
-VACANT_THUMB = "https://kommodo.ai/i/d8QZWIfqfv66bSZHZHH6"
-HEADER_GIF = "https://www.image2url.com/r2/default/gifs/1776832925907-0dcbff17-6cf4-429f-8c72-17c3c7b8636d.gif"
+VACANT_THUMB = "https://cdn.discordapp.com/attachments/1496355649502580757/1496377629501030400/Black_question_mark.png?ex=69e9a9c4&is=69e85844&hm=c5f1e8c59fb5aff7c11f84e43133b22c7785163c20b0c150b5caf04095e32eb6&"
+HEADER_GIF = "https://cdn.discordapp.com/attachments/1496355649502580757/1496377599662755931/WHITE-1.gif?ex=69e9a9bd&is=69e8583d&hm=cae7913688d5a686d7d1da1248509c23b11bacf17387fef4a9d546e6ae9874a7&"
 
 intents = discord.Intents.default()
 intents.members = True
@@ -165,7 +165,6 @@ async def refresh_leaderboard(guild: discord.Guild):
         msg = await channel.send(embeds=chunk)
         new_message_ids.append(msg.id)
 
-    # Delete extra leftover messages if leaderboard shrank
     for old_id in message_ids[len(chunks):]:
         try:
             old_msg = await channel.fetch_message(old_id)
@@ -516,8 +515,7 @@ async def createlb_cmd(interaction: discord.Interaction, range_input: str):
         return
 
     try:
-        parts = range_input.replace(" ", "").split("-")
-        parts = [p for p in parts if p != ""]
+        parts = [p for p in range_input.replace(" ", "").split("-") if p != ""]
         start = int(parts[0])
         end = int(parts[-1])
         if end < start:
@@ -532,8 +530,6 @@ async def createlb_cmd(interaction: discord.Interaction, range_input: str):
         await interaction.response.send_message("❌ Invalid range. Use format like `1-10`.", ephemeral=True)
         return
 
-    await interaction.response.defer(ephemeral=True)
-
     spots = {str(n): vacant_spot_data() for n in range(start, end + 1)}
     lb = {
         "channel_id": interaction.channel.id,
@@ -543,8 +539,9 @@ async def createlb_cmd(interaction: discord.Interaction, range_input: str):
         "spots": spots,
     }
     set_guild_cfg(interaction.guild.id, "leaderboard", lb)
+
+    await interaction.response.send_message(f"✅ Leaderboard `{start}-{end}` created.", ephemeral=True)
     await refresh_leaderboard(interaction.guild)
-    await interaction.followup.send(f"✅ Leaderboard `{start}-{end}` created.", ephemeral=True)
 
 
 # ---------- /fillspot ----------
@@ -581,7 +578,6 @@ async def fillspot_cmd(
         await interaction.response.send_message(f"❌ Spot must be between {lb['start']} and {lb['end']}.", ephemeral=True)
         return
 
-    await interaction.response.defer(ephemeral=True)
     lb.setdefault("spots", {})[str(spot)] = {
         "vacant": False,
         "username": username,
@@ -592,8 +588,9 @@ async def fillspot_cmd(
         "thumbnail_url": thumbnail_url,
     }
     set_guild_cfg(interaction.guild.id, "leaderboard", lb)
+
+    await interaction.response.send_message(f"✅ Spot {spot} updated.", ephemeral=True)
     await refresh_leaderboard(interaction.guild)
-    await interaction.followup.send(f"✅ Spot {spot} updated.", ephemeral=True)
 
 
 # ---------- /moveup ----------
@@ -613,13 +610,13 @@ async def moveup_cmd(interaction: discord.Interaction, spot: int):
         await interaction.response.send_message(f"❌ Cannot move spot {spot} up.", ephemeral=True)
         return
 
-    await interaction.response.defer(ephemeral=True)
     spots = lb.setdefault("spots", {})
     a, b = str(spot), str(spot - 1)
     spots[a], spots[b] = spots.get(b, vacant_spot_data()), spots.get(a, vacant_spot_data())
     set_guild_cfg(interaction.guild.id, "leaderboard", lb)
+
+    await interaction.response.send_message(f"✅ Moved spot {spot} → {spot - 1}.", ephemeral=True)
     await refresh_leaderboard(interaction.guild)
-    await interaction.followup.send(f"✅ Moved spot {spot} → {spot - 1}.", ephemeral=True)
 
 
 # ---------- /movedown ----------
@@ -639,13 +636,13 @@ async def movedown_cmd(interaction: discord.Interaction, spot: int):
         await interaction.response.send_message(f"❌ Cannot move spot {spot} down.", ephemeral=True)
         return
 
-    await interaction.response.defer(ephemeral=True)
     spots = lb.setdefault("spots", {})
     a, b = str(spot), str(spot + 1)
     spots[a], spots[b] = spots.get(b, vacant_spot_data()), spots.get(a, vacant_spot_data())
     set_guild_cfg(interaction.guild.id, "leaderboard", lb)
+
+    await interaction.response.send_message(f"✅ Moved spot {spot} → {spot + 1}.", ephemeral=True)
     await refresh_leaderboard(interaction.guild)
-    await interaction.followup.send(f"✅ Moved spot {spot} → {spot + 1}.", ephemeral=True)
 
 
 # ---------- /removeplayer ----------
@@ -665,11 +662,11 @@ async def removeplayer_cmd(interaction: discord.Interaction, spot: int):
         await interaction.response.send_message(f"❌ Spot must be between {lb['start']} and {lb['end']}.", ephemeral=True)
         return
 
-    await interaction.response.defer(ephemeral=True)
     lb.setdefault("spots", {})[str(spot)] = vacant_spot_data()
     set_guild_cfg(interaction.guild.id, "leaderboard", lb)
+
+    await interaction.response.send_message(f"✅ Spot {spot} reset to vacant.", ephemeral=True)
     await refresh_leaderboard(interaction.guild)
-    await interaction.followup.send(f"✅ Spot {spot} reset to vacant.", ephemeral=True)
 
 
 if __name__ == "__main__":
