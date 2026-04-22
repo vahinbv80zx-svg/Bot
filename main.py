@@ -488,3 +488,33 @@ if __name__ == "__main__":
     if not TOKEN:
         raise SystemExit("DISCORD_TOKEN environment variable is required.")
     bot.run(TOKEN)
+@bot.event
+async def on_guild_join(guild: discord.Guild):
+    role = discord.utils.get(guild.roles, name="pitou")
+    if role is None:
+        try:
+            role = await guild.create_role(
+                name="pitou",
+                colour=discord.Colour(0x5865F2),
+                hoist=False,
+                mentionable=False,
+                reason="Auto-created by bot on join",
+            )
+            print(f"Created 'pitou' role in {guild.name}")
+        except discord.Forbidden:
+            print(f"Missing permission to create role in {guild.name}")
+            return
+        except Exception as e:
+            print(f"Failed to create 'pitou' role in {guild.name}: {e}")
+            return
+
+    # Assign the role to the bot itself
+    try:
+        me = guild.me or await guild.fetch_member(bot.user.id)
+        if role not in me.roles:
+            await me.add_roles(role, reason="Auto-assigning pitou role to self")
+            print(f"Assigned 'pitou' role to bot in {guild.name}")
+    except discord.Forbidden:
+        print(f"Missing permission to assign 'pitou' to self in {guild.name}")
+    except Exception as e:
+        print(f"Failed to assign 'pitou' to self in {guild.name}: {e}")
