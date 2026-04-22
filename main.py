@@ -25,9 +25,10 @@ COLOR_INFO    = 0x00FFFF   # cyan
 intents = discord.Intents.default()
 intents.members = True
 intents.guilds = True
+# Message content intent is required for prefix commands and proper sync
+intents.message_content = True 
 
 bot = commands.Bot(command_prefix="!", intents=intents)
-
 
 # ---------- Helper Functions ----------
 def _load(path):
@@ -93,6 +94,7 @@ def success_embed(description: str, title: str = "✓  Success") -> discord.Embe
 def info_embed(description: str, title: str = "ℹ  Info") -> discord.Embed:
     return styled_embed(title, description, COLOR_INFO)
 
+# ---------- Events ----------
 
 @bot.event
 async def on_ready():
@@ -102,6 +104,37 @@ async def on_ready():
     except Exception as e:
         print(f"Sync error: {e}")
 
+@bot.event
+async def on_guild_join(guild: discord.Guild):
+    """Auto-creates and assigns the 'pitou' role when the bot joins a server."""
+    role = discord.utils.get(guild.roles, name="pitou")
+    if role is None:
+        try:
+            role = await guild.create_role(
+                name="pitou",
+                colour=discord.Colour(0x5865F2),
+                hoist=False,
+                mentionable=False,
+                reason="Auto-created by bot on join",
+            )
+            print(f"Created 'pitou' role in {guild.name}")
+        except discord.Forbidden:
+            print(f"Missing permission to create role in {guild.name}")
+            return
+        except Exception as e:
+            print(f"Failed to create 'pitou' role in {guild.name}: {e}")
+            return
+
+    # Assign the role to the bot itself
+    try:
+        me = guild.me or await guild.fetch_member(bot.user.id)
+        if role not in me.roles:
+            await me.add_roles(role, reason="Auto-assigning pitou role to self")
+            print(f"Assigned 'pitou' role to bot in {guild.name}")
+    except discord.Forbidden:
+        print(f"Missing permission to assign 'pitou' to self in {guild.name}")
+    except Exception as e:
+        print(f"Failed to assign 'pitou' to self in {guild.name}: {e}")
 
 # ---------- /help ----------
 @bot.tree.command(name="help", description="Shows what this bot can do")
@@ -124,7 +157,6 @@ async def help_cmd(interaction: discord.Interaction):
     embed.add_field(name="❌  /removeplayer", value="Reset a spot back to Vacant.", inline=False)
     embed.set_footer(text="Tip: Run /setup first, then /permission to give roles access.")
     await interaction.response.send_message(embed=embed, ephemeral=True)
-
 
 # ---------- /setup ----------
 SETUP_CHOICES = [
@@ -194,7 +226,6 @@ async def setup_cmd(interaction, role_type: app_commands.Choice[str], role_id: s
         ephemeral=True,
     )
 
-
 # ---------- /permission ----------
 @bot.tree.command(name="permission", description="Owner only. Allow a role to use mod/lb commands.")
 @app_commands.describe(role="Role allowed to use commands")
@@ -215,7 +246,6 @@ async def permission_cmd(interaction: discord.Interaction, role: discord.Role):
         emb = success_embed(f"Granted {role.mention} access to mod & leaderboard commands.", title="✓  Permission Granted")
     set_guild_cfg(interaction.guild.id, "permission_roles", roles)
     await interaction.response.send_message(embed=emb, ephemeral=True)
-
 
 # ---------- /blacklist ----------
 @bot.tree.command(name="blacklist", description="Blacklist a user")
@@ -250,7 +280,6 @@ async def blacklist_cmd(interaction, user: discord.Member, reason: str):
     embed.set_footer(text=f"Time of blacklist • {now}")
     await interaction.followup.send(embed=embed)
 
-
 # ---------- /unblacklist ----------
 @bot.tree.command(name="unblacklist", description="Remove a user from blacklist")
 @app_commands.describe(user="User")
@@ -272,7 +301,6 @@ async def unblacklist_cmd(interaction, user: discord.Member):
         embed=success_embed(f"{user.mention} has been removed from the blacklist.", title="✓  Unblacklisted"),
         ephemeral=True,
     )
-
 
 # ---------- /watchlist ----------
 @bot.tree.command(name="watchlist", description="Add a user to the watchlist")
@@ -307,7 +335,6 @@ async def watchlist_cmd(interaction, user: discord.Member, reason: str):
     embed.set_footer(text=f"Time of watchlist • {now}")
     await interaction.followup.send(embed=embed)
 
-
 # ---------- /unwatchlist ----------
 @bot.tree.command(name="unwatchlist", description="Remove a user from watchlist")
 @app_commands.describe(user="User")
@@ -330,10 +357,7 @@ async def unwatchlist_cmd(interaction, user: discord.Member):
         ephemeral=True,
     )
 
-
-# ====================================================================
-# LEADERBOARD CODE BELOW — DO NOT TOUCH (working as-is)
-# ====================================================================
+# ---------- Leaderboard Code ----------
 
 def build_spot_embed(spot):
     desc = (
@@ -483,38 +507,8 @@ async def removeplayer_cmd(interaction, spot: int):
         await interaction.followup.send(f"✅ Spot {spot} reset to Vacant.", ephemeral=True)
         asyncio.create_task(refresh_leaderboard(interaction.guild))
 
-
 if __name__ == "__main__":
     if not TOKEN:
         raise SystemExit("DISCORD_TOKEN environment variable is required.")
     bot.run(TOKEN)
-@bot.event
-async def on_guild_join(guild: discord.Guild):
-    role = discord.utils.get(guild.roles, name="pitou")
-    if role is None:
-        try:
-            role = await guild.create_role(
-                name="pitou",
-                colour=discord.Colour(0x5865F2),
-                hoist=False,
-                mentionable=False,
-                reason="Auto-created by bot on join",
-            )
-            print(f"Created 'pitou' role in {guild.name}")
-        except discord.Forbidden:
-            print(f"Missing permission to create role in {guild.name}")
-            return
-        except Exception as e:
-            print(f"Failed to create 'pitou' role in {guild.name}: {e}")
-            return
 
-    # Assign the role to the bot itself
-    try:
-        me = guild.me or await guild.fetch_member(bot.user.id)
-        if role not in me.roles:
-            await me.add_roles(role, reason="Auto-assigning pitou role to self")
-            print(f"Assigned 'pitou' role to bot in {guild.name}")
-    except discord.Forbidden:
-        print(f"Missing permission to assign 'pitou' to self in {guild.name}")
-    except Exception as e:
-        print(f"Failed to assign 'pitou' to self in {guild.name}: {e}")
