@@ -12,15 +12,22 @@ CONFIG_FILE = "config.json"
 LB_FILE = "leaderboards.json"
 
 # --- FIXED IMAGE URLS ---
-# Using the Discord CDN link you provided to ensure it loads and doesn't crash
 HEADER_GIF = "https://cdn.discordapp.com/attachments/1496355649502580757/1496377599662755931/WHITE-1.gif?ex=69e9a9bd&is=69e8583d&hm=cae7913688d5a686d7d1da1248509c23b11bacf17387fef4a9d546e6ae9874a7&"
 VACANT_THUMB = "https://cdn.discordapp.com/attachments/1496355649502580757/1496377629501030400/Black_question_mark.png?ex=69e9a9c4&is=69e85844&hm=c5f1e8c59fb5aff7c11f84e43133b22c7785163c20b0c150b5caf04095e32eb6&"
+
+# Brand colors for styled responses
+COLOR_PRIMARY = 0x5865F2   # Discord blurple
+COLOR_SUCCESS = 0x57F287   # green
+COLOR_ERROR   = 0xED4245   # red
+COLOR_WARN    = 0xFEE75C   # yellow
+COLOR_INFO    = 0x00FFFF   # cyan
 
 intents = discord.Intents.default()
 intents.members = True
 intents.guilds = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
+
 
 # ---------- Helper Functions ----------
 def _load(path):
@@ -68,6 +75,25 @@ def vacant_spot(num):
         "thumbnail": VACANT_THUMB, "vacant": True,
     }
 
+# ---------- Styled response helpers ----------
+def styled_embed(title: str, description: str, color: int) -> discord.Embed:
+    e = discord.Embed(title=title, description=description, color=color)
+    e.set_footer(text="Moderation & Leaderboard System")
+    return e
+
+def error_embed(description: str, title: str = "✖  Access Denied") -> discord.Embed:
+    return styled_embed(title, description, COLOR_ERROR)
+
+def warn_embed(description: str, title: str = "⚠  Heads Up") -> discord.Embed:
+    return styled_embed(title, description, COLOR_WARN)
+
+def success_embed(description: str, title: str = "✓  Success") -> discord.Embed:
+    return styled_embed(title, description, COLOR_SUCCESS)
+
+def info_embed(description: str, title: str = "ℹ  Info") -> discord.Embed:
+    return styled_embed(title, description, COLOR_INFO)
+
+
 @bot.event
 async def on_ready():
     try:
@@ -76,23 +102,29 @@ async def on_ready():
     except Exception as e:
         print(f"Sync error: {e}")
 
+
 # ---------- /help ----------
 @bot.tree.command(name="help", description="Shows what this bot can do")
 async def help_cmd(interaction: discord.Interaction):
     embed = discord.Embed(
-        title="✨ Moderation & Leaderboard Bot — Help",
-        description="Moderation tools + a clean leaderboard system (up to 50 spots).",
-        color=0x00FFFF,
+        title="✨  Moderation & Leaderboard Bot",
+        description=(
+            "A clean, all-in-one toolkit for keeping your server tidy "
+            "and running a polished leaderboard with up to **50 spots**."
+        ),
+        color=COLOR_PRIMARY,
     )
-    embed.add_field(name="⚙️ /setup", value="Configure blacklist/watchlist roles.", inline=False)
-    embed.add_field(name="🔑 /permission", value="Owner only. Allow a role to use mod/lb commands.", inline=False)
-    embed.add_field(name="🚫 /blacklist • /unblacklist", value="Blacklist or unblacklist a user.", inline=False)
-    embed.add_field(name="👁️ /watchlist • /unwatchlist", value="Watchlist or unwatchlist a user.", inline=False)
-    embed.add_field(name="🏆 /createlb", value="Create a leaderboard. Range like `1-10` (max 50).", inline=False)
-    embed.add_field(name="✏️ /fillspot", value="Fill a spot with player info.", inline=False)
-    embed.add_field(name="⬆️ /moveup • ⬇️ /movedown", value="Swap a player with the spot above/below.", inline=False)
-    embed.add_field(name="❌ /removeplayer", value="Reset a spot back to Vacant.", inline=False)
+    embed.add_field(name="⚙️  /setup", value="Configure the blacklist or watchlist role.", inline=False)
+    embed.add_field(name="🔑  /permission", value="*Owner only.* Grant a role access to mod & leaderboard commands.", inline=False)
+    embed.add_field(name="🚫  /blacklist  •  /unblacklist", value="Strip a user's roles & flag them — or remove them from the blacklist.", inline=False)
+    embed.add_field(name="👁️  /watchlist  •  /unwatchlist", value="Quietly flag a user for monitoring — or clear the flag.", inline=False)
+    embed.add_field(name="🏆  /createlb", value="Build a new leaderboard. Use a range like `1-10`.", inline=False)
+    embed.add_field(name="✏️  /fillspot", value="Fill in a player's info on a spot.", inline=False)
+    embed.add_field(name="⬆️  /moveup  •  ⬇️  /movedown", value="Swap a player with the spot above or below.", inline=False)
+    embed.add_field(name="❌  /removeplayer", value="Reset a spot back to Vacant.", inline=False)
+    embed.set_footer(text="Tip: Run /setup first, then /permission to give roles access.")
     await interaction.response.send_message(embed=embed, ephemeral=True)
+
 
 # ---------- /setup ----------
 SETUP_CHOICES = [
@@ -104,17 +136,26 @@ SETUP_CHOICES = [
 @app_commands.describe(role_type="Which role to configure", role_id="Paste the role ID")
 @app_commands.choices(role_type=SETUP_CHOICES)
 async def setup_cmd(interaction, role_type: app_commands.Choice[str], role_id: str):
-    if not interaction.user.guild_permissions.manage_guild:
-        await interaction.response.send_message("❌ You need **Manage Server**.", ephemeral=True)
+    if not has_permission(interaction):
+        await interaction.response.send_message(
+            embed=error_embed("You don't have permission to use this command."),
+            ephemeral=True,
+        )
         return
     try:
         rid = int(role_id.strip())
     except ValueError:
-        await interaction.response.send_message("❌ Invalid role ID.", ephemeral=True)
+        await interaction.response.send_message(
+            embed=error_embed("That doesn't look like a valid role ID.\nRight-click a role and copy its ID.", title="✖  Invalid Input"),
+            ephemeral=True,
+        )
         return
     role = interaction.guild.get_role(rid)
     if role is None:
-        await interaction.response.send_message("❌ Role not found.", ephemeral=True)
+        await interaction.response.send_message(
+            embed=error_embed("I couldn't find a role with that ID in this server.", title="✖  Role Not Found"),
+            ephemeral=True,
+        )
         return
 
     if role_type.value == "blacklist":
@@ -131,49 +172,64 @@ async def setup_cmd(interaction, role_type: app_commands.Choice[str], role_id: s
                 continue
         if bad:
             preview = ", ".join(f"#{c}" for c in bad[:10])
-            more = f" (+{len(bad)-10} more)" if len(bad) > 10 else ""
+            more = f"  *(+{len(bad)-10} more)*" if len(bad) > 10 else ""
             await interaction.response.send_message(
-                f"⚠️ Blacklist role can still view channels: {preview}{more}", ephemeral=True
+                embed=warn_embed(
+                    f"The blacklist role can still view some channels. "
+                    f"Disable channel access for this role first.\n\n**Visible:** {preview}{more}"
+                ),
+                ephemeral=True,
             )
             return
         set_guild_cfg(interaction.guild.id, "blacklist_role", rid)
-        await interaction.response.send_message("✅ **Blacklist role set**", ephemeral=True)
+        await interaction.response.send_message(
+            embed=success_embed(f"Blacklist role set to {role.mention}."),
+            ephemeral=True,
+        )
         return
 
     set_guild_cfg(interaction.guild.id, "watchlist_role", rid)
-    await interaction.response.send_message("✅ **Watchlist role set**", ephemeral=True)
+    await interaction.response.send_message(
+        embed=success_embed(f"Watchlist role set to {role.mention}."),
+        ephemeral=True,
+    )
+
 
 # ---------- /permission ----------
 @bot.tree.command(name="permission", description="Owner only. Allow a role to use mod/lb commands.")
 @app_commands.describe(role="Role allowed to use commands")
 async def permission_cmd(interaction: discord.Interaction, role: discord.Role):
     if interaction.user.id != OWNER_ID:
-        await interaction.response.send_message("❌ Owner only.", ephemeral=True)
+        await interaction.response.send_message(
+            embed=error_embed("This command is restricted to the bot owner.", title="✖  Owner Only"),
+            ephemeral=True,
+        )
         return
     cfg = get_guild_cfg(interaction.guild.id)
     roles = cfg.get("permission_roles", [])
     if role.id in roles:
         roles.remove(role.id)
-        msg = f"✅ Removed {role.mention} from allowed roles."
+        emb = success_embed(f"Removed {role.mention} from allowed roles.", title="✓  Permission Revoked")
     else:
         roles.append(role.id)
-        msg = f"✅ Added {role.mention} to allowed roles."
+        emb = success_embed(f"Granted {role.mention} access to mod & leaderboard commands.", title="✓  Permission Granted")
     set_guild_cfg(interaction.guild.id, "permission_roles", roles)
-    await interaction.response.send_message(msg, ephemeral=True)
+    await interaction.response.send_message(embed=emb, ephemeral=True)
+
 
 # ---------- /blacklist ----------
 @bot.tree.command(name="blacklist", description="Blacklist a user")
 @app_commands.describe(user="User", reason="Reason")
 async def blacklist_cmd(interaction, user: discord.Member, reason: str):
     if not has_permission(interaction):
-        await interaction.response.send_message("❌ No permission.", ephemeral=True); return
+        await interaction.response.send_message(embed=error_embed("You don't have permission to use this command."), ephemeral=True); return
     cfg = get_guild_cfg(interaction.guild.id)
     rid = cfg.get("blacklist_role")
     if not rid:
-        await interaction.response.send_message("❌ Run `/setup` first.", ephemeral=True); return
+        await interaction.response.send_message(embed=warn_embed("Blacklist role isn't configured. Run `/setup` first.", title="⚠  Not Configured"), ephemeral=True); return
     role = interaction.guild.get_role(int(rid))
     if role is None:
-        await interaction.response.send_message("❌ Role missing. Re-run `/setup`.", ephemeral=True); return
+        await interaction.response.send_message(embed=warn_embed("The configured blacklist role no longer exists. Re-run `/setup`.", title="⚠  Role Missing"), ephemeral=True); return
 
     await interaction.response.defer()
     try:
@@ -184,25 +240,26 @@ async def blacklist_cmd(interaction, user: discord.Member, reason: str):
         try: await user.edit(nick="[BLACKLISTED]")
         except discord.Forbidden: pass
     except discord.Forbidden:
-        await interaction.followup.send("❌ Missing permissions on that user."); return
+        await interaction.followup.send(embed=error_embed("I'm missing permissions on that user. Make sure my role is above theirs.", title="✖  Cannot Modify User")); return
 
     now = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
-    embed = discord.Embed(title="🚫 BLACKLISTED", color=0xFF0000)
-    embed.add_field(name="Blacklisted by", value=interaction.user.mention, inline=False)
+    embed = discord.Embed(title="🚫  BLACKLISTED", color=COLOR_ERROR)
+    embed.add_field(name="Blacklisted by", value=interaction.user.mention, inline=True)
+    embed.add_field(name="Offender", value=user.mention, inline=True)
     embed.add_field(name="Reason", value=reason, inline=False)
-    embed.add_field(name="Offender", value=user.mention, inline=False)
     embed.set_footer(text=f"Time of blacklist • {now}")
     await interaction.followup.send(embed=embed)
+
 
 # ---------- /unblacklist ----------
 @bot.tree.command(name="unblacklist", description="Remove a user from blacklist")
 @app_commands.describe(user="User")
 async def unblacklist_cmd(interaction, user: discord.Member):
     if not has_permission(interaction):
-        await interaction.response.send_message("❌ No permission.", ephemeral=True); return
+        await interaction.response.send_message(embed=error_embed("You don't have permission to use this command."), ephemeral=True); return
     rid = get_guild_cfg(interaction.guild.id).get("blacklist_role")
     if not rid:
-        await interaction.response.send_message("❌ Run `/setup` first.", ephemeral=True); return
+        await interaction.response.send_message(embed=warn_embed("Blacklist role isn't configured. Run `/setup` first.", title="⚠  Not Configured"), ephemeral=True); return
     role = interaction.guild.get_role(int(rid))
     if role and role in user.roles:
         try:
@@ -210,21 +267,25 @@ async def unblacklist_cmd(interaction, user: discord.Member):
             try: await user.edit(nick=None)
             except discord.Forbidden: pass
         except discord.Forbidden:
-            await interaction.response.send_message("❌ Missing permissions.", ephemeral=True); return
-    await interaction.response.send_message(f"✅ {user.mention} removed from blacklist.", ephemeral=True)
+            await interaction.response.send_message(embed=error_embed("I'm missing permissions on that user.", title="✖  Cannot Modify User"), ephemeral=True); return
+    await interaction.response.send_message(
+        embed=success_embed(f"{user.mention} has been removed from the blacklist.", title="✓  Unblacklisted"),
+        ephemeral=True,
+    )
+
 
 # ---------- /watchlist ----------
 @bot.tree.command(name="watchlist", description="Add a user to the watchlist")
 @app_commands.describe(user="User", reason="Reason")
 async def watchlist_cmd(interaction, user: discord.Member, reason: str):
     if not has_permission(interaction):
-        await interaction.response.send_message("❌ No permission.", ephemeral=True); return
+        await interaction.response.send_message(embed=error_embed("You don't have permission to use this command."), ephemeral=True); return
     rid = get_guild_cfg(interaction.guild.id).get("watchlist_role")
     if not rid:
-        await interaction.response.send_message("❌ Run `/setup` first.", ephemeral=True); return
+        await interaction.response.send_message(embed=warn_embed("Watchlist role isn't configured. Run `/setup` first.", title="⚠  Not Configured"), ephemeral=True); return
     role = interaction.guild.get_role(int(rid))
     if role is None:
-        await interaction.response.send_message("❌ Role missing. Re-run `/setup`.", ephemeral=True); return
+        await interaction.response.send_message(embed=warn_embed("The configured watchlist role no longer exists. Re-run `/setup`.", title="⚠  Role Missing"), ephemeral=True); return
 
     await interaction.response.defer()
     try:
@@ -232,28 +293,30 @@ async def watchlist_cmd(interaction, user: discord.Member, reason: str):
         try: await user.edit(nick="[WATCHLIST]")
         except discord.Forbidden: pass
     except discord.Forbidden:
-        await interaction.followup.send("❌ Missing permissions."); return
+        await interaction.followup.send(embed=error_embed("I'm missing permissions on that user.", title="✖  Cannot Modify User")); return
 
     now = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
     embed = discord.Embed(
-        title="👁️ WATCHLISTED USER",
-        description=f"USER HAS BEEN WATCHLISTED BY {interaction.user.mention}",
+        title="👁️  WATCHLISTED",
+        description=f"User has been placed on the watchlist by {interaction.user.mention}.",
         color=0xFFFFFF,
     )
-    embed.add_field(name="REASON", value=reason, inline=False)
-    embed.add_field(name="OFFENDER", value=user.mention, inline=False)
+    embed.add_field(name="Offender", value=user.mention, inline=True)
+    embed.add_field(name="Watchlisted by", value=interaction.user.mention, inline=True)
+    embed.add_field(name="Reason", value=reason, inline=False)
     embed.set_footer(text=f"Time of watchlist • {now}")
     await interaction.followup.send(embed=embed)
+
 
 # ---------- /unwatchlist ----------
 @bot.tree.command(name="unwatchlist", description="Remove a user from watchlist")
 @app_commands.describe(user="User")
 async def unwatchlist_cmd(interaction, user: discord.Member):
     if not has_permission(interaction):
-        await interaction.response.send_message("❌ No permission.", ephemeral=True); return
+        await interaction.response.send_message(embed=error_embed("You don't have permission to use this command."), ephemeral=True); return
     rid = get_guild_cfg(interaction.guild.id).get("watchlist_role")
     if not rid:
-        await interaction.response.send_message("❌ Run `/setup` first.", ephemeral=True); return
+        await interaction.response.send_message(embed=warn_embed("Watchlist role isn't configured. Run `/setup` first.", title="⚠  Not Configured"), ephemeral=True); return
     role = interaction.guild.get_role(int(rid))
     if role and role in user.roles:
         try:
@@ -261,10 +324,17 @@ async def unwatchlist_cmd(interaction, user: discord.Member):
             try: await user.edit(nick=None)
             except discord.Forbidden: pass
         except discord.Forbidden:
-            await interaction.response.send_message("❌ Missing permissions.", ephemeral=True); return
-    await interaction.response.send_message(f"✅ {user.mention} removed from watchlist.", ephemeral=True)
+            await interaction.response.send_message(embed=error_embed("I'm missing permissions on that user.", title="✖  Cannot Modify User"), ephemeral=True); return
+    await interaction.response.send_message(
+        embed=success_embed(f"{user.mention} has been removed from the watchlist.", title="✓  Unwatchlisted"),
+        ephemeral=True,
+    )
 
-# ---------- Leaderboard rendering ----------
+
+# ====================================================================
+# LEADERBOARD CODE BELOW — DO NOT TOUCH (working as-is)
+# ====================================================================
+
 def build_spot_embed(spot):
     desc = (
         f"| `{spot['discord']}` |\n"
@@ -306,7 +376,6 @@ async def refresh_leaderboard(guild: discord.Guild):
     lb["message_ids"] = new_ids
     set_lb(guild.id, lb)
 
-# ---------- /createlb ----------
 @bot.tree.command(name="createlb", description="Create a leaderboard. Range like 1-10 (max 50).")
 @app_commands.describe(spot_range="Range, e.g. 1-10", channel="Channel to post in")
 async def createlb_cmd(interaction, spot_range: str, channel: discord.TextChannel):
@@ -332,7 +401,6 @@ async def createlb_cmd(interaction, spot_range: str, channel: discord.TextChanne
     await interaction.followup.send(f"✅ Leaderboard created in {channel.mention}.", ephemeral=True)
     asyncio.create_task(refresh_leaderboard(interaction.guild))
 
-# ---------- /fillspot ----------
 @bot.tree.command(name="fillspot", description="Fill a leaderboard spot with player info")
 @app_commands.describe(
     spot="Spot number", username="Display name", discord_handle="Discord @handle",
@@ -360,7 +428,6 @@ async def fillspot_cmd(interaction, spot: int, username: str, discord_handle: st
     await interaction.followup.send(f"✅ Spot {spot} updated.", ephemeral=True)
     asyncio.create_task(refresh_leaderboard(interaction.guild))
 
-# ---------- /moveup ----------
 @bot.tree.command(name="moveup", description="Move a spot up by 1")
 async def moveup_cmd(interaction, spot: int):
     await interaction.response.defer(ephemeral=True)
@@ -381,7 +448,6 @@ async def moveup_cmd(interaction, spot: int):
     await interaction.followup.send(f"✅ Moved spot {spot} up.", ephemeral=True)
     asyncio.create_task(refresh_leaderboard(interaction.guild))
 
-# ---------- /movedown ----------
 @bot.tree.command(name="movedown", description="Move a spot down by 1")
 async def movedown_cmd(interaction, spot: int):
     await interaction.response.defer(ephemeral=True)
@@ -402,7 +468,6 @@ async def movedown_cmd(interaction, spot: int):
     await interaction.followup.send(f"✅ Moved spot {spot} down.", ephemeral=True)
     asyncio.create_task(refresh_leaderboard(interaction.guild))
 
-# ---------- /removeplayer ----------
 @bot.tree.command(name="removeplayer", description="Reset a spot back to Vacant")
 async def removeplayer_cmd(interaction, spot: int):
     await interaction.response.defer(ephemeral=True)
@@ -418,8 +483,8 @@ async def removeplayer_cmd(interaction, spot: int):
         await interaction.followup.send(f"✅ Spot {spot} reset to Vacant.", ephemeral=True)
         asyncio.create_task(refresh_leaderboard(interaction.guild))
 
+
 if __name__ == "__main__":
     if not TOKEN:
         raise SystemExit("DISCORD_TOKEN environment variable is required.")
     bot.run(TOKEN)
-
