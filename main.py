@@ -11,15 +11,15 @@ OWNER_ID = 1025704740828491806
 CONFIG_FILE = "config.json"
 LB_FILE = "leaderboards.json"
 
-HEADER_GIF = "https://cdn.jsdelivr.net/gh/vahinbv80zx-svg/Bot@main/header.gif"
-VACANT_THUMB = "https://cdn.jsdelivr.net/gh/vahinbv80zx-svg/Bot@main/vacant.png"
+# --- UPDATED IMAGE URLS ---
+HEADER_GIF = "https://raw.githubusercontent.com/vahinbv80zx-svg/Bot/main/header.gif"
+VACANT_THUMB = "https://cdn.discordapp.com/attachments/1496355649502580757/1496377629501030400/Black_question_mark.png?ex=69e9a9c4&is=69e85844&hm=c5f1e8c59fb5aff7c11f84e43133b22c7785163c20b0c150b5caf04095e32eb6&"
 
 intents = discord.Intents.default()
 intents.members = True
 intents.guilds = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
-
 
 def _load(path):
     if not os.path.exists(path):
@@ -30,15 +30,12 @@ def _load(path):
     except Exception:
         return {}
 
-
 def _save(path, data):
     with open(path, "w") as f:
         json.dump(data, f, indent=2)
 
-
 def get_guild_cfg(guild_id):
     return _load(CONFIG_FILE).get(str(guild_id), {})
-
 
 def set_guild_cfg(guild_id, key, value):
     cfg = _load(CONFIG_FILE)
@@ -47,16 +44,13 @@ def set_guild_cfg(guild_id, key, value):
     cfg[str(guild_id)] = g
     _save(CONFIG_FILE, cfg)
 
-
 def get_lb(guild_id):
     return _load(LB_FILE).get(str(guild_id))
-
 
 def set_lb(guild_id, data):
     lbs = _load(LB_FILE)
     lbs[str(guild_id)] = data
     _save(LB_FILE, lbs)
-
 
 def has_permission(interaction):
     if interaction.user.id == OWNER_ID:
@@ -65,14 +59,12 @@ def has_permission(interaction):
     allowed = cfg.get("permission_roles", [])
     return any(r.id in allowed for r in interaction.user.roles)
 
-
 def vacant_spot(num):
     return {
         "num": num, "username": "Vacant", "discord": "Vacant",
         "roblox": "Information", "country": "Null", "stage": "Null",
         "thumbnail": VACANT_THUMB, "vacant": True,
     }
-
 
 @bot.event
 async def on_ready():
@@ -81,7 +73,6 @@ async def on_ready():
         print(f"Logged in as {bot.user} | Synced {len(synced)} commands")
     except Exception as e:
         print(f"Sync error: {e}")
-
 
 # ---------- /help ----------
 @bot.tree.command(name="help", description="Shows what this bot can do")
@@ -101,13 +92,11 @@ async def help_cmd(interaction: discord.Interaction):
     embed.add_field(name="❌ /removeplayer", value="Reset a spot back to Vacant.", inline=False)
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
-
 # ---------- /setup ----------
 SETUP_CHOICES = [
     app_commands.Choice(name="Blacklist Role", value="blacklist"),
     app_commands.Choice(name="Watchlist Role", value="watchlist"),
 ]
-
 
 @bot.tree.command(name="setup", description="Configure the blacklist or watchlist role")
 @app_commands.describe(role_type="Which role to configure", role_id="Paste the role ID")
@@ -152,7 +141,6 @@ async def setup_cmd(interaction, role_type: app_commands.Choice[str], role_id: s
     set_guild_cfg(interaction.guild.id, "watchlist_role", rid)
     await interaction.response.send_message("✅ **Watchlist role set**", ephemeral=True)
 
-
 # ---------- /permission ----------
 @bot.tree.command(name="permission", description="Owner only. Allow a role to use mod/lb commands.")
 @app_commands.describe(role="Role allowed to use commands")
@@ -170,7 +158,6 @@ async def permission_cmd(interaction: discord.Interaction, role: discord.Role):
         msg = f"✅ Added {role.mention} to allowed roles."
     set_guild_cfg(interaction.guild.id, "permission_roles", roles)
     await interaction.response.send_message(msg, ephemeral=True)
-
 
 # ---------- /blacklist ----------
 @bot.tree.command(name="blacklist", description="Blacklist a user")
@@ -205,7 +192,6 @@ async def blacklist_cmd(interaction, user: discord.Member, reason: str):
     embed.set_footer(text=f"Time of blacklist • {now}")
     await interaction.followup.send(embed=embed)
 
-
 # ---------- /unblacklist ----------
 @bot.tree.command(name="unblacklist", description="Remove a user from blacklist")
 @app_commands.describe(user="User")
@@ -224,7 +210,6 @@ async def unblacklist_cmd(interaction, user: discord.Member):
         except discord.Forbidden:
             await interaction.response.send_message("❌ Missing permissions.", ephemeral=True); return
     await interaction.response.send_message(f"✅ {user.mention} removed from blacklist.", ephemeral=True)
-
 
 # ---------- /watchlist ----------
 @bot.tree.command(name="watchlist", description="Add a user to the watchlist")
@@ -258,7 +243,6 @@ async def watchlist_cmd(interaction, user: discord.Member, reason: str):
     embed.set_footer(text=f"Time of watchlist • {now}")
     await interaction.followup.send(embed=embed)
 
-
 # ---------- /unwatchlist ----------
 @bot.tree.command(name="unwatchlist", description="Remove a user from watchlist")
 @app_commands.describe(user="User")
@@ -278,14 +262,13 @@ async def unwatchlist_cmd(interaction, user: discord.Member):
             await interaction.response.send_message("❌ Missing permissions.", ephemeral=True); return
     await interaction.response.send_message(f"✅ {user.mention} removed from watchlist.", ephemeral=True)
 
-
-# ---------- Leaderboard rendering ----------
+# ---------- Leaderboard rendering (UPDATED) ----------
 def build_spot_embed(spot):
     desc = (
         f"| `{spot['discord']}` |\n"
-        f"<<< | • {spot['roblox']} • | >>>\n"
-        f"Country : {spot['country']}\n"
-        f"Stage : {spot['stage']}"
+        f"«« | • {spot['roblox']} • | »»\n"
+        f"**Country :** {spot['country']}\n"
+        f"**Stage :** {spot['stage']}"
     )
     embed = discord.Embed(
         title=f"{spot['num']} - {spot['username']}",
@@ -295,7 +278,6 @@ def build_spot_embed(spot):
     embed.set_image(url=HEADER_GIF)
     embed.set_thumbnail(url=spot.get("thumbnail") or VACANT_THUMB)
     return embed
-
 
 async def refresh_leaderboard(guild: discord.Guild):
     lb = get_lb(guild.id)
@@ -319,8 +301,7 @@ async def refresh_leaderboard(guild: discord.Guild):
     lb["message_ids"] = new_ids
     set_lb(guild.id, lb)
 
-
-# ---------- /createlb ----------
+# ---------- /createlb (UPDATED) ----------
 @bot.tree.command(name="createlb", description="Create a leaderboard. Range like 1-10 (max 50).")
 @app_commands.describe(spot_range="Range, e.g. 1-10", channel="Channel to post in")
 async def createlb_cmd(interaction, spot_range: str, channel: discord.TextChannel):
@@ -346,16 +327,15 @@ async def createlb_cmd(interaction, spot_range: str, channel: discord.TextChanne
     await interaction.followup.send(f"✅ Leaderboard created in {channel.mention}.", ephemeral=True)
     asyncio.create_task(refresh_leaderboard(interaction.guild))
 
-
-# ---------- /fillspot ----------
+# ---------- /fillspot (UPDATED) ----------
 @bot.tree.command(name="fillspot", description="Fill a leaderboard spot with player info")
 @app_commands.describe(
     spot="Spot number", username="Display name", discord_handle="Discord @handle",
     roblox="Roblox username", country="Country flag emoji or name",
-    stage="Stage text (e.g. Stage 1 - High)", thumbnail="Direct image URL",
+    stage="Stage text (e.g. Stage 1 - High)", thumbnail_url="Direct image URL",
 )
 async def fillspot_cmd(interaction, spot: int, username: str, discord_handle: str,
-                       roblox: str, country: str, stage: str, thumbnail: str):
+                       roblox: str, country: str, stage: str, thumbnail_url: str):
     await interaction.response.defer(ephemeral=True)
     if not has_permission(interaction):
         await interaction.followup.send("❌ No permission.", ephemeral=True); return
@@ -368,14 +348,13 @@ async def fillspot_cmd(interaction, spot: int, username: str, discord_handle: st
     lb["spots"][idx] = {
         "num": spot, "username": username, "discord": discord_handle,
         "roblox": roblox, "country": country, "stage": stage,
-        "thumbnail": thumbnail, "vacant": False,
+        "thumbnail": thumbnail_url, "vacant": False,
     }
     set_lb(interaction.guild.id, lb)
     await interaction.followup.send(f"✅ Spot {spot} updated.", ephemeral=True)
     asyncio.create_task(refresh_leaderboard(interaction.guild))
 
-
-# ---------- /moveup ----------
+# ---------- /moveup (UPDATED) ----------
 @bot.tree.command(name="moveup", description="Move a spot up by 1")
 @app_commands.describe(spot="Spot number to move up")
 async def moveup_cmd(interaction, spot: int):
@@ -388,15 +367,17 @@ async def moveup_cmd(interaction, spot: int):
     idx = next((i for i, s in enumerate(lb["spots"]) if s["num"] == spot), None)
     if idx is None or idx == 0:
         await interaction.followup.send("❌ Can't move up.", ephemeral=True); return
-    a, b = lb["spots"][idx - 1], lb["spots"][idx]
-    a["num"], b["num"] = b["num"], a["num"]
-    lb["spots"][idx - 1], lb["spots"][idx] = b, a
+    
+    # Swap data but keep spot numbers consistent
+    spots = lb["spots"]
+    spots[idx], spots[idx - 1] = spots[idx - 1], spots[idx]
+    spots[idx]["num"], spots[idx - 1]["num"] = spots[idx - 1]["num"], spots[idx]["num"]
+    
     set_lb(interaction.guild.id, lb)
     await interaction.followup.send(f"✅ Moved spot {spot} up.", ephemeral=True)
     asyncio.create_task(refresh_leaderboard(interaction.guild))
 
-
-# ---------- /movedown ----------
+# ---------- /movedown (UPDATED) ----------
 @bot.tree.command(name="movedown", description="Move a spot down by 1")
 @app_commands.describe(spot="Spot number to move down")
 async def movedown_cmd(interaction, spot: int):
@@ -409,15 +390,17 @@ async def movedown_cmd(interaction, spot: int):
     idx = next((i for i, s in enumerate(lb["spots"]) if s["num"] == spot), None)
     if idx is None or idx >= len(lb["spots"]) - 1:
         await interaction.followup.send("❌ Can't move down.", ephemeral=True); return
-    a, b = lb["spots"][idx], lb["spots"][idx + 1]
-    a["num"], b["num"] = b["num"], a["num"]
-    lb["spots"][idx], lb["spots"][idx + 1] = b, a
+    
+    # Swap data but keep spot numbers consistent
+    spots = lb["spots"]
+    spots[idx], spots[idx + 1] = spots[idx + 1], spots[idx]
+    spots[idx]["num"], spots[idx + 1]["num"] = spots[idx + 1]["num"], spots[idx]["num"]
+    
     set_lb(interaction.guild.id, lb)
     await interaction.followup.send(f"✅ Moved spot {spot} down.", ephemeral=True)
     asyncio.create_task(refresh_leaderboard(interaction.guild))
 
-
-# ---------- /removeplayer ----------
+# ---------- /removeplayer (UPDATED) ----------
 @bot.tree.command(name="removeplayer", description="Reset a spot back to Vacant")
 @app_commands.describe(spot="Spot number")
 async def removeplayer_cmd(interaction, spot: int):
@@ -435,8 +418,8 @@ async def removeplayer_cmd(interaction, spot: int):
     await interaction.followup.send(f"✅ Spot {spot} reset to Vacant.", ephemeral=True)
     asyncio.create_task(refresh_leaderboard(interaction.guild))
 
-
 if __name__ == "__main__":
     if not TOKEN:
         raise SystemExit("DISCORD_TOKEN environment variable is required.")
     bot.run(TOKEN)
+
