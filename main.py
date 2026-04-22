@@ -45,6 +45,34 @@ def set_guild_cfg(guild_id: int, key: str, value):
     save_config(cfg)
 
 
+def save_user_backup(guild_id: int, user_id: int, kind: str, data: dict):
+    cfg = load_config()
+    g = cfg.get(str(guild_id), {})
+    backups = g.get("backups", {})
+    user_backups = backups.get(str(user_id), {})
+    user_backups[kind] = data
+    backups[str(user_id)] = user_backups
+    g["backups"] = backups
+    cfg[str(guild_id)] = g
+    save_config(cfg)
+
+
+def pop_user_backup(guild_id: int, user_id: int, kind: str):
+    cfg = load_config()
+    g = cfg.get(str(guild_id), {})
+    backups = g.get("backups", {})
+    user_backups = backups.get(str(user_id), {})
+    data = user_backups.pop(kind, None)
+    if user_backups:
+        backups[str(user_id)] = user_backups
+    else:
+        backups.pop(str(user_id), None)
+    g["backups"] = backups
+    cfg[str(guild_id)] = g
+    save_config(cfg)
+    return data
+
+
 def has_permission(interaction: discord.Interaction) -> bool:
     if interaction.user.id == OWNER_ID:
         return True
@@ -85,36 +113,12 @@ async def help_cmd(interaction: discord.Interaction):
         ),
         color=0x00FFFF,
     )
-    embed.add_field(
-        name="🚫  /blacklist",
-        value="Blacklist a user — strips their roles, renames them, and applies the blacklist role.",
-        inline=False,
-    )
-    embed.add_field(
-        name="👁️  /watchlist",
-        value="Add a user to the watchlist — keeps their roles but flags them for monitoring.",
-        inline=False,
-    )
-    embed.add_field(
-        name="🎖️  Assign Rank",
-        value="Quickly grant a rank/role to a member.",
-        inline=False,
-    )
-    embed.add_field(
-        name="🔍  Blacklist Check",
-        value="Check whether a user is currently blacklisted.",
-        inline=False,
-    )
-    embed.add_field(
-        name="⚙️  /setup",
-        value="Configure the blacklist and watchlist roles before using moderation commands.",
-        inline=False,
-    )
-    embed.add_field(
-        name="🔑  /permission",
-        value="Owner-only. Grant a role permission to use the bot.",
-        inline=False,
-    )
+    embed.add_field(name="🚫  /blacklist", value="Blacklist a user — strips their roles, renames them, and applies the blacklist role.", inline=False)
+    embed.add_field(name="♻️  /unblacklist", value="Restore a blacklisted user — gives back their roles and nickname.", inline=False)
+    embed.add_field(name="👁️  /watchlist", value="Add a user to the watchlist — keeps their roles but flags them for monitoring.", inline=False)
+    embed.add_field(name="🟢  /unwatchlist", value="Remove a user from the watchlist and restore their nickname.", inline=False)
+    embed.add_field(name="⚙️  /setup", value="Configure the blacklist and watchlist roles before using moderation commands.", inline=False)
+    embed.add_field(name="🔑  /permission", value="Owner-only. Grant a role permission to use the bot.", inline=False)
     embed.set_footer(text="Tip: Run /setup first to configure your roles.")
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
@@ -127,41 +131,25 @@ SETUP_CHOICES = [
 
 
 @bot.tree.command(name="setup", description="Configure the blacklist or watchlist role")
-@app_commands.describe(
-    role_type="Which role do you want to set up?",
-    role_id="Paste the role ID here",
-)
+@app_commands.describe(role_type="Which role do you want to set up?", role_id="Paste the role ID here")
 @app_commands.choices(role_type=SETUP_CHOICES)
-async def setup_cmd(
-    interaction: discord.Interaction,
-    role_type: app_commands.Choice[str],
-    role_id: str,
-):
+async def setup_cmd(interaction: discord.Interaction, role_type: app_commands.Choice[str], role_id: str):
     if not has_permission(interaction):
         await deny(interaction)
         return
     if not interaction.user.guild_permissions.manage_guild:
-        await interaction.response.send_message(
-            "❌ You need the **Manage Server** permission to use this.",
-            ephemeral=True,
-        )
+        await interaction.response.send_message("❌ You need the **Manage Server** permission to use this.", ephemeral=True)
         return
 
     try:
         rid = int(role_id.strip())
     except ValueError:
-        await interaction.response.send_message(
-            "❌ That doesn't look like a valid role ID. Right-click a role and copy its ID.",
-            ephemeral=True,
-        )
+        await interaction.response.send_message("❌ That doesn't look like a valid role ID. Right-click a role and copy its ID.", ephemeral=True)
         return
 
     role = interaction.guild.get_role(rid)
     if role is None:
-        await interaction.response.send_message(
-            "❌ I couldn't find a role with that ID in this server.",
-            ephemeral=True,
-        )
+        await interaction.response.send_message("❌ I couldn't find a role with that ID in this server.", ephemeral=True)
         return
 
     if role_type.value == "blacklist":
@@ -182,23 +170,17 @@ async def setup_cmd(
             preview = ", ".join(f"#{c}" for c in bad_channels[:10])
             more = f" (+{len(bad_channels) - 10} more)" if len(bad_channels) > 10 else ""
             await interaction.response.send_message(
-                "⚠️ The blacklist role can still view some channels. "
-                f"Please disable channel access for this role first.\n\n"
-                f"Channels still visible: {preview}{more}",
+                f"⚠️ The blacklist role can still view some channels. Please disable channel access for this role first.\n\nChannels still visible: {preview}{more}",
                 ephemeral=True,
             )
             return
 
         set_guild_cfg(interaction.guild.id, "blacklist_role", rid)
-        await interaction.response.send_message(
-            "✅ **Blacklisted Command has been set**", ephemeral=True
-        )
+        await interaction.response.send_message("✅ **Blacklisted Command has been set**", ephemeral=True)
         return
 
     set_guild_cfg(interaction.guild.id, "watchlist_role", rid)
-    await interaction.response.send_message(
-        "✅ **WatchList command has been set**", ephemeral=True
-    )
+    await interaction.response.send_message("✅ **WatchList command has been set**", ephemeral=True)
 
 
 # ---------- /permission ----------
@@ -206,9 +188,7 @@ async def setup_cmd(
 @app_commands.describe(role_ids="Role ID(s) to grant permission to (separate multiple with spaces)")
 async def permission_cmd(interaction: discord.Interaction, role_ids: str):
     if interaction.user.id != OWNER_ID:
-        await interaction.response.send_message(
-            "🚫 Only the bot owner can use this command.", ephemeral=True
-        )
+        await interaction.response.send_message("🚫 Only the bot owner can use this command.", ephemeral=True)
         return
 
     granted_roles = []
@@ -226,9 +206,7 @@ async def permission_cmd(interaction: discord.Interaction, role_ids: str):
         granted_roles.append(role)
 
     if not granted_roles:
-        await interaction.response.send_message(
-            "❌ No valid role IDs provided.", ephemeral=True
-        )
+        await interaction.response.send_message("❌ No valid role IDs provided.", ephemeral=True)
         return
 
     cfg = get_guild_cfg(interaction.guild.id)
@@ -250,39 +228,36 @@ async def permission_cmd(interaction: discord.Interaction, role_ids: str):
 # ---------- /blacklist ----------
 @bot.tree.command(name="blacklist", description="Blacklist a user")
 @app_commands.describe(user="The user to blacklist", reason="Reason for blacklisting")
-async def blacklist_cmd(
-    interaction: discord.Interaction,
-    user: discord.Member,
-    reason: str,
-):
+async def blacklist_cmd(interaction: discord.Interaction, user: discord.Member, reason: str):
     if not has_permission(interaction):
         await deny(interaction)
         return
     if not interaction.user.guild_permissions.manage_roles:
-        await interaction.response.send_message(
-            "❌ You need the **Manage Roles** permission to use this.", ephemeral=True
-        )
+        await interaction.response.send_message("❌ You need the **Manage Roles** permission to use this.", ephemeral=True)
         return
 
     cfg = get_guild_cfg(interaction.guild.id)
     role_id = cfg.get("blacklist_role")
     if not role_id:
-        await interaction.response.send_message(
-            "❌ Blacklist role isn't configured. Run `/setup` first.", ephemeral=True
-        )
+        await interaction.response.send_message("❌ Blacklist role isn't configured. Run `/setup` first.", ephemeral=True)
         return
 
     role = interaction.guild.get_role(int(role_id))
     if role is None:
-        await interaction.response.send_message(
-            "❌ The configured blacklist role no longer exists. Re-run `/setup`.",
-            ephemeral=True,
-        )
+        await interaction.response.send_message("❌ The configured blacklist role no longer exists. Re-run `/setup`.", ephemeral=True)
         return
 
     await interaction.response.defer()
 
     try:
+        original_roles = [r.id for r in user.roles if r != interaction.guild.default_role and r.id != role.id]
+        original_nick = user.nick
+
+        save_user_backup(interaction.guild.id, user.id, "blacklist", {
+            "roles": original_roles,
+            "nick": original_nick,
+        })
+
         roles_to_remove = [r for r in user.roles if r != interaction.guild.default_role]
         if roles_to_remove:
             await user.remove_roles(*roles_to_remove, reason=f"Blacklisted by {interaction.user}")
@@ -292,16 +267,11 @@ async def blacklist_cmd(
         except discord.Forbidden:
             pass
     except discord.Forbidden:
-        await interaction.followup.send(
-            "❌ I don't have permission to modify that user. Make sure my role is above theirs."
-        )
+        await interaction.followup.send("❌ I don't have permission to modify that user. Make sure my role is above theirs.")
         return
 
     now = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
-    embed = discord.Embed(
-        title="🚫 BLACKLISTED",
-        color=0xFF0000,
-    )
+    embed = discord.Embed(title="🚫 BLACKLISTED", color=0xFF0000)
     embed.add_field(name="Blacklisted by", value=interaction.user.mention, inline=False)
     embed.add_field(name="Reason", value=reason, inline=False)
     embed.add_field(name="Offender", value=user.mention, inline=False)
@@ -309,51 +279,94 @@ async def blacklist_cmd(
     await interaction.followup.send(embed=embed)
 
 
-# ---------- /watchlist ----------
-@bot.tree.command(name="watchlist", description="Add a user to the watchlist")
-@app_commands.describe(user="The user to watchlist", reason="Reason for watchlisting")
-async def watchlist_cmd(
-    interaction: discord.Interaction,
-    user: discord.Member,
-    reason: str,
-):
+# ---------- /unblacklist ----------
+@bot.tree.command(name="unblacklist", description="Remove a user from the blacklist")
+@app_commands.describe(user="The user to unblacklist", reason="Reason for unblacklisting")
+async def unblacklist_cmd(interaction: discord.Interaction, user: discord.Member, reason: str):
     if not has_permission(interaction):
         await deny(interaction)
         return
     if not interaction.user.guild_permissions.manage_roles:
-        await interaction.response.send_message(
-            "❌ You need the **Manage Roles** permission to use this.", ephemeral=True
-        )
+        await interaction.response.send_message("❌ You need the **Manage Roles** permission to use this.", ephemeral=True)
+        return
+
+    cfg = get_guild_cfg(interaction.guild.id)
+    role_id = cfg.get("blacklist_role")
+    if not role_id:
+        await interaction.response.send_message("❌ Blacklist role isn't configured. Run `/setup` first.", ephemeral=True)
+        return
+
+    role = interaction.guild.get_role(int(role_id))
+
+    await interaction.response.defer()
+
+    backup = pop_user_backup(interaction.guild.id, user.id, "blacklist") or {}
+    saved_role_ids = backup.get("roles", [])
+    saved_nick = backup.get("nick")
+
+    try:
+        if role and role in user.roles:
+            await user.remove_roles(role, reason=f"Unblacklisted by {interaction.user}: {reason}")
+
+        roles_to_restore = []
+        for rid in saved_role_ids:
+            r = interaction.guild.get_role(rid)
+            if r is not None and r < interaction.guild.me.top_role:
+                roles_to_restore.append(r)
+        if roles_to_restore:
+            await user.add_roles(*roles_to_restore, reason=f"Restoring roles after unblacklist by {interaction.user}")
+
+        try:
+            await user.edit(nick=saved_nick)
+        except discord.Forbidden:
+            pass
+    except discord.Forbidden:
+        await interaction.followup.send("❌ I don't have permission to modify that user. Make sure my role is above theirs.")
+        return
+
+    now = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
+    embed = discord.Embed(title="♻️ UNBLACKLISTED", color=0xFFFF00)
+    embed.add_field(name="UNBLACKLISTED BY", value=interaction.user.mention, inline=False)
+    embed.add_field(name="REASON", value=reason, inline=False)
+    embed.add_field(name="USER", value=user.mention, inline=False)
+    embed.set_footer(text=f"Time of unblacklist • {now}")
+    await interaction.followup.send(embed=embed)
+
+
+# ---------- /watchlist ----------
+@bot.tree.command(name="watchlist", description="Add a user to the watchlist")
+@app_commands.describe(user="The user to watchlist", reason="Reason for watchlisting")
+async def watchlist_cmd(interaction: discord.Interaction, user: discord.Member, reason: str):
+    if not has_permission(interaction):
+        await deny(interaction)
+        return
+    if not interaction.user.guild_permissions.manage_roles:
+        await interaction.response.send_message("❌ You need the **Manage Roles** permission to use this.", ephemeral=True)
         return
 
     cfg = get_guild_cfg(interaction.guild.id)
     role_id = cfg.get("watchlist_role")
     if not role_id:
-        await interaction.response.send_message(
-            "❌ Watchlist role isn't configured. Run `/setup` first.", ephemeral=True
-        )
+        await interaction.response.send_message("❌ Watchlist role isn't configured. Run `/setup` first.", ephemeral=True)
         return
 
     role = interaction.guild.get_role(int(role_id))
     if role is None:
-        await interaction.response.send_message(
-            "❌ The configured watchlist role no longer exists. Re-run `/setup`.",
-            ephemeral=True,
-        )
+        await interaction.response.send_message("❌ The configured watchlist role no longer exists. Re-run `/setup`.", ephemeral=True)
         return
 
     await interaction.response.defer()
 
     try:
+        save_user_backup(interaction.guild.id, user.id, "watchlist", {"nick": user.nick})
+
         await user.add_roles(role, reason=f"Watchlisted by {interaction.user}: {reason}")
         try:
             await user.edit(nick="[WATCHLIST]")
         except discord.Forbidden:
             pass
     except discord.Forbidden:
-        await interaction.followup.send(
-            "❌ I don't have permission to modify that user. Make sure my role is above theirs."
-        )
+        await interaction.followup.send("❌ I don't have permission to modify that user. Make sure my role is above theirs.")
         return
 
     now = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
@@ -365,6 +378,50 @@ async def watchlist_cmd(
     embed.add_field(name="REASON", value=reason, inline=False)
     embed.add_field(name="OFFENDER", value=user.mention, inline=False)
     embed.set_footer(text=f"Time of watchlist • {now}")
+    await interaction.followup.send(embed=embed)
+
+
+# ---------- /unwatchlist ----------
+@bot.tree.command(name="unwatchlist", description="Remove a user from the watchlist")
+@app_commands.describe(user="The user to unwatchlist", reason="Reason for unwatchlisting")
+async def unwatchlist_cmd(interaction: discord.Interaction, user: discord.Member, reason: str):
+    if not has_permission(interaction):
+        await deny(interaction)
+        return
+    if not interaction.user.guild_permissions.manage_roles:
+        await interaction.response.send_message("❌ You need the **Manage Roles** permission to use this.", ephemeral=True)
+        return
+
+    cfg = get_guild_cfg(interaction.guild.id)
+    role_id = cfg.get("watchlist_role")
+    if not role_id:
+        await interaction.response.send_message("❌ Watchlist role isn't configured. Run `/setup` first.", ephemeral=True)
+        return
+
+    role = interaction.guild.get_role(int(role_id))
+
+    await interaction.response.defer()
+
+    backup = pop_user_backup(interaction.guild.id, user.id, "watchlist") or {}
+    saved_nick = backup.get("nick")
+
+    try:
+        if role and role in user.roles:
+            await user.remove_roles(role, reason=f"Unwatchlisted by {interaction.user}: {reason}")
+        try:
+            await user.edit(nick=saved_nick)
+        except discord.Forbidden:
+            pass
+    except discord.Forbidden:
+        await interaction.followup.send("❌ I don't have permission to modify that user. Make sure my role is above theirs.")
+        return
+
+    now = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
+    embed = discord.Embed(title="🟢 UNWATCHLIST", color=0xFFFF00)
+    embed.add_field(name="UNWATCHLIST BY", value=interaction.user.mention, inline=False)
+    embed.add_field(name="REASON", value=reason, inline=False)
+    embed.add_field(name="USER", value=user.mention, inline=False)
+    embed.set_footer(text=f"Time of unwatchlist • {now}")
     await interaction.followup.send(embed=embed)
 
 
