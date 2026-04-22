@@ -11,9 +11,9 @@ OWNER_ID = 1025704740828491806
 CONFIG_FILE = "config.json"
 LB_FILE = "leaderboards.json"
 
-# --- UPDATED IMAGE URLS (FOR GITHUB + RAILWAY) ---
-# This uses the raw link so Discord fetches the file directly from your repo
-HEADER_GIF = "https://raw.githubusercontent.com/vahinbv80zx-svg/Bot/main/header.gif"
+# --- FIXED IMAGE URLS ---
+# Using the Discord CDN link you provided to ensure it loads and doesn't crash
+HEADER_GIF = "https://cdn.discordapp.com/attachments/1496355649502580757/1496377599662755931/WHITE-1.gif?ex=69e9a9bd&is=69e8583d&hm=cae7913688d5a686d7d1da1248509c23b11bacf17387fef4a9d546e6ae9874a7&"
 VACANT_THUMB = "https://cdn.discordapp.com/attachments/1496355649502580757/1496377629501030400/Black_question_mark.png?ex=69e9a9c4&is=69e85844&hm=c5f1e8c59fb5aff7c11f84e43133b22c7785163c20b0c150b5caf04095e32eb6&"
 
 intents = discord.Intents.default()
@@ -76,7 +76,7 @@ async def on_ready():
     except Exception as e:
         print(f"Sync error: {e}")
 
-# ---------- /help (UNTOUCHED) ----------
+# ---------- /help ----------
 @bot.tree.command(name="help", description="Shows what this bot can do")
 async def help_cmd(interaction: discord.Interaction):
     embed = discord.Embed(
@@ -94,7 +94,7 @@ async def help_cmd(interaction: discord.Interaction):
     embed.add_field(name="❌ /removeplayer", value="Reset a spot back to Vacant.", inline=False)
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
-# ---------- /setup (UNTOUCHED) ----------
+# ---------- /setup ----------
 SETUP_CHOICES = [
     app_commands.Choice(name="Blacklist Role", value="blacklist"),
     app_commands.Choice(name="Watchlist Role", value="watchlist"),
@@ -143,7 +143,7 @@ async def setup_cmd(interaction, role_type: app_commands.Choice[str], role_id: s
     set_guild_cfg(interaction.guild.id, "watchlist_role", rid)
     await interaction.response.send_message("✅ **Watchlist role set**", ephemeral=True)
 
-# ---------- /permission (UNTOUCHED) ----------
+# ---------- /permission ----------
 @bot.tree.command(name="permission", description="Owner only. Allow a role to use mod/lb commands.")
 @app_commands.describe(role="Role allowed to use commands")
 async def permission_cmd(interaction: discord.Interaction, role: discord.Role):
@@ -161,7 +161,7 @@ async def permission_cmd(interaction: discord.Interaction, role: discord.Role):
     set_guild_cfg(interaction.guild.id, "permission_roles", roles)
     await interaction.response.send_message(msg, ephemeral=True)
 
-# ---------- /blacklist (UNTOUCHED) ----------
+# ---------- /blacklist ----------
 @bot.tree.command(name="blacklist", description="Blacklist a user")
 @app_commands.describe(user="User", reason="Reason")
 async def blacklist_cmd(interaction, user: discord.Member, reason: str):
@@ -194,7 +194,7 @@ async def blacklist_cmd(interaction, user: discord.Member, reason: str):
     embed.set_footer(text=f"Time of blacklist • {now}")
     await interaction.followup.send(embed=embed)
 
-# ---------- /unblacklist (UNTOUCHED) ----------
+# ---------- /unblacklist ----------
 @bot.tree.command(name="unblacklist", description="Remove a user from blacklist")
 @app_commands.describe(user="User")
 async def unblacklist_cmd(interaction, user: discord.Member):
@@ -213,7 +213,7 @@ async def unblacklist_cmd(interaction, user: discord.Member):
             await interaction.response.send_message("❌ Missing permissions.", ephemeral=True); return
     await interaction.response.send_message(f"✅ {user.mention} removed from blacklist.", ephemeral=True)
 
-# ---------- /watchlist (UNTOUCHED) ----------
+# ---------- /watchlist ----------
 @bot.tree.command(name="watchlist", description="Add a user to the watchlist")
 @app_commands.describe(user="User", reason="Reason")
 async def watchlist_cmd(interaction, user: discord.Member, reason: str):
@@ -245,7 +245,7 @@ async def watchlist_cmd(interaction, user: discord.Member, reason: str):
     embed.set_footer(text=f"Time of watchlist • {now}")
     await interaction.followup.send(embed=embed)
 
-# ---------- /unwatchlist (UNTOUCHED) ----------
+# ---------- /unwatchlist ----------
 @bot.tree.command(name="unwatchlist", description="Remove a user from watchlist")
 @app_commands.describe(user="User")
 async def unwatchlist_cmd(interaction, user: discord.Member):
@@ -264,7 +264,7 @@ async def unwatchlist_cmd(interaction, user: discord.Member):
             await interaction.response.send_message("❌ Missing permissions.", ephemeral=True); return
     await interaction.response.send_message(f"✅ {user.mention} removed from watchlist.", ephemeral=True)
 
-# ---------- Leaderboard rendering (UPDATED) ----------
+# ---------- Leaderboard rendering ----------
 def build_spot_embed(spot):
     desc = (
         f"| `{spot['discord']}` |\n"
@@ -277,9 +277,7 @@ def build_spot_embed(spot):
         description=desc,
         color=0x2B2D31,
     )
-    # The header GIF from GitHub Raw
     embed.set_image(url=HEADER_GIF)
-    # The user thumbnail or Vacant question mark
     embed.set_thumbnail(url=spot.get("thumbnail") or VACANT_THUMB)
     return embed
 
@@ -291,7 +289,6 @@ async def refresh_leaderboard(guild: discord.Guild):
     if channel is None:
         return
     
-    # Clean up old messages
     for mid in lb.get("message_ids", []):
         try:
             msg = await channel.fetch_message(int(mid))
@@ -301,7 +298,6 @@ async def refresh_leaderboard(guild: discord.Guild):
             
     spots = lb["spots"]
     new_ids = []
-    # Send in groups of 10 to avoid Discord limits
     for i in range(0, len(spots), 10):
         embeds = [build_spot_embed(s) for s in spots[i:i+10]]
         msg = await channel.send(embeds=embeds)
@@ -310,7 +306,7 @@ async def refresh_leaderboard(guild: discord.Guild):
     lb["message_ids"] = new_ids
     set_lb(guild.id, lb)
 
-# ---------- /createlb (UPDATED) ----------
+# ---------- /createlb ----------
 @bot.tree.command(name="createlb", description="Create a leaderboard. Range like 1-10 (max 50).")
 @app_commands.describe(spot_range="Range, e.g. 1-10", channel="Channel to post in")
 async def createlb_cmd(interaction, spot_range: str, channel: discord.TextChannel):
@@ -336,7 +332,7 @@ async def createlb_cmd(interaction, spot_range: str, channel: discord.TextChanne
     await interaction.followup.send(f"✅ Leaderboard created in {channel.mention}.", ephemeral=True)
     asyncio.create_task(refresh_leaderboard(interaction.guild))
 
-# ---------- /fillspot (UPDATED) ----------
+# ---------- /fillspot ----------
 @bot.tree.command(name="fillspot", description="Fill a leaderboard spot with player info")
 @app_commands.describe(
     spot="Spot number", username="Display name", discord_handle="Discord @handle",
@@ -364,7 +360,7 @@ async def fillspot_cmd(interaction, spot: int, username: str, discord_handle: st
     await interaction.followup.send(f"✅ Spot {spot} updated.", ephemeral=True)
     asyncio.create_task(refresh_leaderboard(interaction.guild))
 
-# ---------- /moveup (UPDATED) ----------
+# ---------- /moveup ----------
 @bot.tree.command(name="moveup", description="Move a spot up by 1")
 async def moveup_cmd(interaction, spot: int):
     await interaction.response.defer(ephemeral=True)
@@ -378,7 +374,6 @@ async def moveup_cmd(interaction, spot: int):
         await interaction.followup.send("❌ Can't move up.", ephemeral=True); return
     
     spots = lb["spots"]
-    # Swap data but keep spot numbers fixed
     spots[idx], spots[idx - 1] = spots[idx - 1], spots[idx]
     spots[idx]["num"], spots[idx - 1]["num"] = spots[idx - 1]["num"], spots[idx]["num"]
     
@@ -386,7 +381,7 @@ async def moveup_cmd(interaction, spot: int):
     await interaction.followup.send(f"✅ Moved spot {spot} up.", ephemeral=True)
     asyncio.create_task(refresh_leaderboard(interaction.guild))
 
-# ---------- /movedown (UPDATED) ----------
+# ---------- /movedown ----------
 @bot.tree.command(name="movedown", description="Move a spot down by 1")
 async def movedown_cmd(interaction, spot: int):
     await interaction.response.defer(ephemeral=True)
@@ -400,7 +395,6 @@ async def movedown_cmd(interaction, spot: int):
         await interaction.followup.send("❌ Can't move down.", ephemeral=True); return
     
     spots = lb["spots"]
-    # Swap data but keep spot numbers fixed
     spots[idx], spots[idx + 1] = spots[idx + 1], spots[idx]
     spots[idx]["num"], spots[idx + 1]["num"] = spots[idx + 1]["num"], spots[idx]["num"]
     
@@ -408,7 +402,7 @@ async def movedown_cmd(interaction, spot: int):
     await interaction.followup.send(f"✅ Moved spot {spot} down.", ephemeral=True)
     asyncio.create_task(refresh_leaderboard(interaction.guild))
 
-# ---------- /removeplayer (UPDATED) ----------
+# ---------- /removeplayer ----------
 @bot.tree.command(name="removeplayer", description="Reset a spot back to Vacant")
 async def removeplayer_cmd(interaction, spot: int):
     await interaction.response.defer(ephemeral=True)
