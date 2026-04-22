@@ -324,17 +324,18 @@ async def refresh_leaderboard(guild: discord.Guild):
 @bot.tree.command(name="createlb", description="Create a leaderboard. Range like 1-10 (max 50).")
 @app_commands.describe(spot_range="Range, e.g. 1-10", channel="Channel to post in")
 async def createlb_cmd(interaction, spot_range: str, channel: discord.TextChannel):
+    await interaction.response.defer(ephemeral=True)
     if not has_permission(interaction):
-        await interaction.response.send_message("❌ No permission.", ephemeral=True); return
+        await interaction.followup.send("❌ No permission.", ephemeral=True); return
     try:
         a, b = spot_range.split("-")
         start, end = int(a.strip()), int(b.strip())
     except Exception:
-        await interaction.response.send_message("❌ Invalid range. Use `1-10`.", ephemeral=True); return
+        await interaction.followup.send("❌ Invalid range. Use `1-10`.", ephemeral=True); return
     if start < 1 or end < start:
-        await interaction.response.send_message("❌ Invalid range values.", ephemeral=True); return
+        await interaction.followup.send("❌ Invalid range values.", ephemeral=True); return
     if (end - start + 1) > 50:
-        await interaction.response.send_message("❌ Max 50 spots.", ephemeral=True); return
+        await interaction.followup.send("❌ Max 50 spots.", ephemeral=True); return
 
     spots = [vacant_spot(n) for n in range(start, end + 1)]
     set_lb(interaction.guild.id, {
@@ -342,7 +343,7 @@ async def createlb_cmd(interaction, spot_range: str, channel: discord.TextChanne
         "message_ids": [],
         "spots": spots,
     })
-    await interaction.response.send_message(f"✅ Leaderboard created in {channel.mention}.", ephemeral=True)
+    await interaction.followup.send(f"✅ Leaderboard created in {channel.mention}.", ephemeral=True)
     asyncio.create_task(refresh_leaderboard(interaction.guild))
 
 
@@ -355,21 +356,22 @@ async def createlb_cmd(interaction, spot_range: str, channel: discord.TextChanne
 )
 async def fillspot_cmd(interaction, spot: int, username: str, discord_handle: str,
                        roblox: str, country: str, stage: str, thumbnail: str):
+    await interaction.response.defer(ephemeral=True)
     if not has_permission(interaction):
-        await interaction.response.send_message("❌ No permission.", ephemeral=True); return
+        await interaction.followup.send("❌ No permission.", ephemeral=True); return
     lb = get_lb(interaction.guild.id)
     if not lb:
-        await interaction.response.send_message("❌ Run `/createlb` first.", ephemeral=True); return
+        await interaction.followup.send("❌ Run `/createlb` first.", ephemeral=True); return
     idx = next((i for i, s in enumerate(lb["spots"]) if s["num"] == spot), None)
     if idx is None:
-        await interaction.response.send_message("❌ Spot not in this leaderboard.", ephemeral=True); return
+        await interaction.followup.send("❌ Spot not in this leaderboard.", ephemeral=True); return
     lb["spots"][idx] = {
         "num": spot, "username": username, "discord": discord_handle,
         "roblox": roblox, "country": country, "stage": stage,
         "thumbnail": thumbnail, "vacant": False,
     }
     set_lb(interaction.guild.id, lb)
-    await interaction.response.send_message(f"✅ Spot {spot} updated.", ephemeral=True)
+    await interaction.followup.send(f"✅ Spot {spot} updated.", ephemeral=True)
     asyncio.create_task(refresh_leaderboard(interaction.guild))
 
 
@@ -377,19 +379,20 @@ async def fillspot_cmd(interaction, spot: int, username: str, discord_handle: st
 @bot.tree.command(name="moveup", description="Move a spot up by 1")
 @app_commands.describe(spot="Spot number to move up")
 async def moveup_cmd(interaction, spot: int):
+    await interaction.response.defer(ephemeral=True)
     if not has_permission(interaction):
-        await interaction.response.send_message("❌ No permission.", ephemeral=True); return
+        await interaction.followup.send("❌ No permission.", ephemeral=True); return
     lb = get_lb(interaction.guild.id)
     if not lb:
-        await interaction.response.send_message("❌ No leaderboard.", ephemeral=True); return
+        await interaction.followup.send("❌ No leaderboard.", ephemeral=True); return
     idx = next((i for i, s in enumerate(lb["spots"]) if s["num"] == spot), None)
     if idx is None or idx == 0:
-        await interaction.response.send_message("❌ Can't move up.", ephemeral=True); return
+        await interaction.followup.send("❌ Can't move up.", ephemeral=True); return
     a, b = lb["spots"][idx - 1], lb["spots"][idx]
     a["num"], b["num"] = b["num"], a["num"]
     lb["spots"][idx - 1], lb["spots"][idx] = b, a
     set_lb(interaction.guild.id, lb)
-    await interaction.response.send_message(f"✅ Moved spot {spot} up.", ephemeral=True)
+    await interaction.followup.send(f"✅ Moved spot {spot} up.", ephemeral=True)
     asyncio.create_task(refresh_leaderboard(interaction.guild))
 
 
@@ -397,19 +400,20 @@ async def moveup_cmd(interaction, spot: int):
 @bot.tree.command(name="movedown", description="Move a spot down by 1")
 @app_commands.describe(spot="Spot number to move down")
 async def movedown_cmd(interaction, spot: int):
+    await interaction.response.defer(ephemeral=True)
     if not has_permission(interaction):
-        await interaction.response.send_message("❌ No permission.", ephemeral=True); return
+        await interaction.followup.send("❌ No permission.", ephemeral=True); return
     lb = get_lb(interaction.guild.id)
     if not lb:
-        await interaction.response.send_message("❌ No leaderboard.", ephemeral=True); return
+        await interaction.followup.send("❌ No leaderboard.", ephemeral=True); return
     idx = next((i for i, s in enumerate(lb["spots"]) if s["num"] == spot), None)
     if idx is None or idx >= len(lb["spots"]) - 1:
-        await interaction.response.send_message("❌ Can't move down.", ephemeral=True); return
+        await interaction.followup.send("❌ Can't move down.", ephemeral=True); return
     a, b = lb["spots"][idx], lb["spots"][idx + 1]
     a["num"], b["num"] = b["num"], a["num"]
     lb["spots"][idx], lb["spots"][idx + 1] = b, a
     set_lb(interaction.guild.id, lb)
-    await interaction.response.send_message(f"✅ Moved spot {spot} down.", ephemeral=True)
+    await interaction.followup.send(f"✅ Moved spot {spot} down.", ephemeral=True)
     asyncio.create_task(refresh_leaderboard(interaction.guild))
 
 
@@ -417,17 +421,18 @@ async def movedown_cmd(interaction, spot: int):
 @bot.tree.command(name="removeplayer", description="Reset a spot back to Vacant")
 @app_commands.describe(spot="Spot number")
 async def removeplayer_cmd(interaction, spot: int):
+    await interaction.response.defer(ephemeral=True)
     if not has_permission(interaction):
-        await interaction.response.send_message("❌ No permission.", ephemeral=True); return
+        await interaction.followup.send("❌ No permission.", ephemeral=True); return
     lb = get_lb(interaction.guild.id)
     if not lb:
-        await interaction.response.send_message("❌ No leaderboard.", ephemeral=True); return
+        await interaction.followup.send("❌ No leaderboard.", ephemeral=True); return
     idx = next((i for i, s in enumerate(lb["spots"]) if s["num"] == spot), None)
     if idx is None:
-        await interaction.response.send_message("❌ Spot not in this leaderboard.", ephemeral=True); return
+        await interaction.followup.send("❌ Spot not in this leaderboard.", ephemeral=True); return
     lb["spots"][idx] = vacant_spot(spot)
     set_lb(interaction.guild.id, lb)
-    await interaction.response.send_message(f"✅ Spot {spot} reset to Vacant.", ephemeral=True)
+    await interaction.followup.send(f"✅ Spot {spot} reset to Vacant.", ephemeral=True)
     asyncio.create_task(refresh_leaderboard(interaction.guild))
 
 
