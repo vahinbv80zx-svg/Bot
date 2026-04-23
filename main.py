@@ -65,6 +65,9 @@ def has_permission(interaction):
     if interaction.user.id == OWNER_ID:
         return True
     cfg = get_guild_cfg(interaction.guild.id)
+    # 🔒 Provoked mode disables everyone except owner
+    if cfg.get("provoked", False):
+        return False
     allowed = cfg.get("permission_roles", [])
     return any(r.id in allowed for r in interaction.user.roles)
 
@@ -222,56 +225,111 @@ async def permission_cmd(interaction: discord.Interaction, role: discord.Role):
 @app_commands.describe(user="User", reason="Reason")
 async def blacklist_cmd(interaction, user: discord.Member, reason: str):
     if not has_permission(interaction):
-        await interaction.response.send_message(embed=error_embed("You don't have permission to use this command."), ephemeral=True); return
-    cfg = get_guild_cfg(interaction.guild.id)
-    rid = cfg.get("blacklist_role")
+        await interaction.response.send_message(embed=error_embed("You don't have permission to use this command."), ephemeral=True)
+        return
+
+    cfg = _load(CONFIG_FILE)
+    gid = str(interaction.guild.id)
+    g = cfg.get(gid, {})
+
+    rid = g.get("blacklist_role")
     if not rid:
-        await interaction.response.send_message(embed=warn_embed("Blacklist role isn't configured. Run `/setup` first.", title="⚠  Not Configured"), ephemeral=True); return
+        await interaction.response.send_message(embed=warn_embed("Blacklist role isn't configured. Run `/setup` first."), ephemeral=True)
+        return
+
     role = interaction.guild.get_role(int(rid))
-    if role is None:
-        await interaction.response.send_message(embed=warn_embed("The configured blacklist role no longer exists. Re-run `/setup`.", title="⚠  Role Missing"), ephemeral=True); return
+
+    # 💾 SAVE ROLES
+    saved_roles = [r.id for r in user.roles if r != interaction.guild.default_role]
+    g.setdefault("saved_roles", {})[str(user.id)] = saved_roles
+    cfg[gid] = g
+    _save(CONFIG_FILE, cfg)
 
     await interaction.response.defer()
+
     try:
-        to_remove = [r for r in user.roles if r != interaction.guild.default_role]
-        if to_remove:
-            await user.remove_roles(*to_remove, reason=f"Blacklisted by {interaction.user}")
+        await user.remove_roles(*[r for r in user.roles if r != interaction.guild.default_role])
         await user.add_roles(role, reason=f"Blacklisted by {interaction.user}: {reason}")
-        try: await user.edit(nick="[BLACKLISTED]")
-        except discord.Forbidden: pass
+        try:
+            await user.edit(nick="[BLACKLISTED]")
+        except discord.Forbidden:
+            pass
     except discord.Forbidden:
-        await interaction.followup.send(embed=error_embed("I'm missing permissions on that user. Make sure my role is above theirs.", title="✖  Cannot Modify User")); return
+        await interaction.followup.send(embed=error_embed("I'm missing permissions on that user."))
+        return
 
     now = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
+
     embed = discord.Embed(title="🚫  BLACKLISTED", color=COLOR_ERROR)
     embed.add_field(name="Blacklisted by", value=interaction.user.mention, inline=True)
     embed.add_field(name="Offender", value=user.mention, inline=True)
     embed.add_field(name="Reason", value=reason, inline=False)
     embed.set_footer(text=f"Time of blacklist • {now}")
-    await interaction.followup.send(embed=embed)
 
+    await interaction.followup.send(embed=embed)
 
 # ---------- /unblacklist ----------
 @bot.tree.command(name="unblacklist", description="Remove a user from blacklist")
-@app_commands.describe(user="User")
-async def unblacklist_cmd(interaction, user: discord.Member):
+@app_commands.describe(user="User", reason="Reason")
+async def unblacklist_cmd(interaction, user: discord.Member, reason: str):
     if not has_permission(interaction):
-        await interaction.response.send_message(embed=error_embed("You don't have permission to use this command."), ephemeral=True); return
-    rid = get_guild_cfg(interaction.guild.id).get("blacklist_role")
+        await interaction.response.send_message(
+            embed=error_embed("You don't have permission to use this command."),
+            ephemeral=True
+        )
+        return
+
+    cfg = _load(CONFIG_FILE)
+    gid = str(interaction.guild.id)
+    g = cfg.get(gid, {})
+
+    rid = g.get("blacklist_role")
     if not rid:
-        await interaction.response.send_message(embed=warn_embed("Blacklist role isn't configured. Run `/setup` first.", title="⚠  Not Configured"), ephemeral=True); return
+        await interaction.response.send_message(
+            embed=warn_embed("Blacklist role isn't configured. Run `/setup` first."),
+            ephemeral=True
+        )
+        return
+
     role = interaction.guild.get_role(int(rid))
+
+    # ❌ Remove blacklist role
     if role and role in user.roles:
         try:
             await user.remove_roles(role, reason=f"Unblacklisted by {interaction.user}")
-            try: await user.edit(nick=None)
-            except discord.Forbidden: pass
+            try:
+                await user.edit(nick=None)
+            except discord.Forbidden:
+                pass
         except discord.Forbidden:
-            await interaction.response.send_message(embed=error_embed("I'm missing permissions on that user.", title="✖  Cannot Modify User"), ephemeral=True); return
-    await interaction.response.send_message(
-        embed=success_embed(f"{user.mention} has been removed from the blacklist.", title="✓  Unblacklisted"),
-        ephemeral=True,
-    )
+            await interaction.response.send_message(embed=error_embed("Missing permissions."), ephemeral=True)
+            return
+
+    # 🔄 Restore roles
+    saved = g.get("saved_roles", {}).get(str(user.id), [])
+    roles_to_restore = [interaction.guild.get_role(r) for r in saved if interaction.guild.get_role(r)]
+
+    if roles_to_restore:
+        try:
+            await user.add_roles(*roles_to_restore, reason="Restoring roles after unblacklist")
+        except discord.Forbidden:
+            pass
+
+    # 🧹 Cleanup
+    if "saved_roles" in g and str(user.id) in g["saved_roles"]:
+        del g["saved_roles"][str(user.id)]
+        cfg[gid] = g
+        _save(CONFIG_FILE, cfg)
+
+    now = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
+
+    embed = discord.Embed(title="UNBLACKLISTED", color=COLOR_SUCCESS)
+    embed.add_field(name="UNBLACKLISTED BY", value=interaction.user.mention, inline=False)
+    embed.add_field(name="REASON", value=reason, inline=False)
+    embed.add_field(name="USER", value=user.mention, inline=False)
+    embed.add_field(name="TIME", value=now, inline=False)
+
+    await interaction.response.send_message(embed=embed)
 
 
 # ---------- /watchlist ----------
@@ -329,6 +387,28 @@ async def unwatchlist_cmd(interaction, user: discord.Member):
         embed=success_embed(f"{user.mention} has been removed from the watchlist.", title="✓  Unwatchlisted"),
         ephemeral=True,
     )
+    # ---------- /provoked ----------
+
+@bot.tree.command(name="provoked", description="Owner only. Toggle bot lockdown mode.")
+async def provoked_cmd(interaction: discord.Interaction):
+    if interaction.user.id != OWNER_ID:
+        await interaction.response.send_message(
+            embed=error_embed("This command is restricted to the bot owner."),
+            ephemeral=True
+        )
+        return
+
+    cfg = get_guild_cfg(interaction.guild.id)
+    new_state = not cfg.get("provoked", False)
+
+    set_guild_cfg(interaction.guild.id, "provoked", new_state)
+
+    if new_state:
+        msg = "🔒 Bot locked. Only owner can use commands."
+    else:
+        msg = "🔓 Bot unlocked. Permissions restored."
+
+    await interaction.response.send_message(embed=success_embed(msg))
 
 
 # ====================================================================
