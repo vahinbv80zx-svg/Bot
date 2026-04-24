@@ -430,23 +430,18 @@ def build_spot_embed(spot):
     embed.set_image(url=HEADER_GIF)
     embed.set_thumbnail(url=spot.get("thumbnail") or VACANT_THUMB)
     return embed
-
     async def refresh_leaderboard(guild: discord.Guild):
     lb = get_lb(guild.id)
     if not lb:
         print("No leaderboard found")
         return
-
     channel = guild.get_channel(int(lb["channel_id"]))
     if channel is None:
         print("Channel not found")
         return
-
     spots = lb["spots"]
     message_ids = lb.get("message_ids", [])
-
     new_message_ids = []
-
     for index, i in enumerate(range(0, len(spots), 10)):
         embeds = [build_spot_embed(s) for s in spots[i:i+10]]
 
@@ -455,18 +450,16 @@ def build_spot_embed(spot):
                 msg = await channel.fetch_message(int(message_ids[index]))
                 await msg.edit(embeds=embeds)
                 new_message_ids.append(str(msg.id))
-                print(f"Edited message {msg.id}")
+                print(f"Edited {msg.id}")
                 continue
             except Exception as e:
-                print(f"EDIT FAILED: {e}")
-
-        # fallback → create new
+                print(f"Edit failed: {e}")
         msg = await channel.send(embeds=embeds)
         new_message_ids.append(str(msg.id))
-        print(f"Created new message {msg.id}")
-
+        print(f"Created {msg.id}")
     lb["message_ids"] = new_message_ids
     set_lb(guild.id, lb)
+     
 
 @bot.tree.command(name="createlb", description="Create a leaderboard. Range like 1-10 (max 50).")
 @app_commands.describe(spot_range="Range, e.g. 1-10", channel="Channel to post in")
