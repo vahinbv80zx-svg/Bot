@@ -467,27 +467,36 @@ async def refresh_leaderboard(guild: discord.Guild):
     lb["message_ids"] = new_message_ids
     set_lb(guild.id, lb)
     lb = get_lb(guild.id)
+    async def refresh_leaderboard(guild: discord.Guild):
+    lb = get_lb(guild.id)
     if not lb:
         return
+
     channel = guild.get_channel(int(lb["channel_id"]))
     if channel is None:
         return
-    
-    for mid in lb.get("message_ids", []):
-        try:
-            msg = await channel.fetch_message(int(mid))
-            await msg.delete()
-        except Exception:
-            pass
-            
+
     spots = lb["spots"]
-    new_ids = []
+    message_ids = lb.get("message_ids", [])
+
+    new_message_ids = []
+
     for i in range(0, len(spots), 10):
         embeds = [build_spot_embed(s) for s in spots[i:i+10]]
+
+        if i // 10 < len(message_ids):
+            try:
+                msg = await channel.fetch_message(int(message_ids[i // 10]))
+                await msg.edit(embeds=embeds)
+                new_message_ids.append(str(msg.id))
+                continue
+            except:
+                pass
+
         msg = await channel.send(embeds=embeds)
-        new_ids.append(str(msg.id))
-        
-    lb["message_ids"] = new_ids
+        new_message_ids.append(str(msg.id))
+
+    lb["message_ids"] = new_message_ids
     set_lb(guild.id, lb)
 
 @bot.tree.command(name="createlb", description="Create a leaderboard. Range like 1-10 (max 50).")
