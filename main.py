@@ -65,12 +65,12 @@ def has_permission(interaction):
     if interaction.user.id == OWNER_ID:
         return True
     cfg = get_guild_cfg(interaction.guild.id)
-    # 🔒 Provoked mode disables everyone except owner
+    # ✅ NEW: provoked mode check
     if cfg.get("provoked", False):
         return False
     allowed = cfg.get("permission_roles", [])
     return any(r.id in allowed for r in interaction.user.roles)
-
+    
 def vacant_spot(num):
     return {
         "num": num, "username": "Vacant", "discord": "Vacant",
@@ -239,7 +239,7 @@ async def blacklist_cmd(interaction, user: discord.Member, reason: str):
 
     role = interaction.guild.get_role(int(rid))
 
-    # 💾 SAVE ROLES
+    # ✅ SAVE ROLES
     saved_roles = [r.id for r in user.roles if r != interaction.guild.default_role]
     g.setdefault("saved_roles", {})[str(user.id)] = saved_roles
     cfg[gid] = g
@@ -250,10 +250,6 @@ async def blacklist_cmd(interaction, user: discord.Member, reason: str):
     try:
         await user.remove_roles(*[r for r in user.roles if r != interaction.guild.default_role])
         await user.add_roles(role, reason=f"Blacklisted by {interaction.user}: {reason}")
-        try:
-            await user.edit(nick="[BLACKLISTED]")
-        except discord.Forbidden:
-            pass
     except discord.Forbidden:
         await interaction.followup.send(embed=error_embed("I'm missing permissions on that user."))
         return
@@ -261,12 +257,13 @@ async def blacklist_cmd(interaction, user: discord.Member, reason: str):
     now = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
 
     embed = discord.Embed(title="🚫  BLACKLISTED", color=COLOR_ERROR)
-    embed.add_field(name="Blacklisted by", value=interaction.user.mention, inline=True)
-    embed.add_field(name="Offender", value=user.mention, inline=True)
+    embed.add_field(name="Blacklisted by", value=interaction.user.mention)
+    embed.add_field(name="User", value=user.mention)
     embed.add_field(name="Reason", value=reason, inline=False)
-    embed.set_footer(text=f"Time of blacklist • {now}")
+    embed.set_footer(text=f"Time • {now}")
 
     await interaction.followup.send(embed=embed)
+
 
 # ---------- /unblacklist ----------
 @bot.tree.command(name="unblacklist", description="Remove a user from blacklist")
@@ -293,21 +290,22 @@ async def unblacklist_cmd(interaction, user: discord.Member, reason: str):
 
     role = interaction.guild.get_role(int(rid))
 
-    # ❌ Remove blacklist role
+    # REMOVE BLACKLIST ROLE
     if role and role in user.roles:
         try:
             await user.remove_roles(role, reason=f"Unblacklisted by {interaction.user}")
-            try:
-                await user.edit(nick=None)
-            except discord.Forbidden:
-                pass
         except discord.Forbidden:
             await interaction.response.send_message(embed=error_embed("Missing permissions."), ephemeral=True)
             return
 
-    # 🔄 Restore roles
+    # ✅ RESTORE ROLES
     saved = g.get("saved_roles", {}).get(str(user.id), [])
-    roles_to_restore = [interaction.guild.get_role(r) for r in saved if interaction.guild.get_role(r)]
+    roles_to_restore = []
+
+    for r_id in saved:
+        r = interaction.guild.get_role(r_id)
+        if r:
+            roles_to_restore.append(r)
 
     if roles_to_restore:
         try:
@@ -315,7 +313,7 @@ async def unblacklist_cmd(interaction, user: discord.Member, reason: str):
         except discord.Forbidden:
             pass
 
-    # 🧹 Cleanup
+    # REMOVE SAVED DATA
     if "saved_roles" in g and str(user.id) in g["saved_roles"]:
         del g["saved_roles"][str(user.id)]
         cfg[gid] = g
@@ -387,30 +385,37 @@ async def unwatchlist_cmd(interaction, user: discord.Member):
         embed=success_embed(f"{user.mention} has been removed from the watchlist.", title="✓  Unwatchlisted"),
         ephemeral=True,
     )
-    # ---------- /provoked ----------
+# ---------- /provoked ----------
 
 @bot.tree.command(name="provoked", description="Owner only. Toggle bot lockdown mode.")
 async def provoked_cmd(interaction: discord.Interaction):
     if interaction.user.id != OWNER_ID:
         await interaction.response.send_message(
-            embed=error_embed("This command is restricted to the bot owner."),
+            embed=error_embed("This command is restricted to the bot owner.", title="✖  Owner Only"),
             ephemeral=True
         )
         return
 
     cfg = get_guild_cfg(interaction.guild.id)
-    new_state = not cfg.get("provoked", False)
+    current = cfg.get("provoked", False)
 
+    # toggle
+    new_state = not current
     set_guild_cfg(interaction.guild.id, "provoked", new_state)
 
     if new_state:
-        msg = "🔒 Bot locked. Only owner can use commands."
+        embed = warn_embed(
+            "Bot is now **LOCKED DOWN**.\n\nAll permission-role users can no longer use commands.",
+            title="⚠  Provoked Mode Enabled"
+        )
     else:
-        msg = "🔓 Bot unlocked. Permissions restored."
+        embed = success_embed(
+            "Bot is back to normal.\n\nPermission-role users can use commands again.",
+            title="✓  Provoked Mode Disabled"
+        )
 
-    await interaction.response.send_message(embed=success_embed(msg))
-
-
+    await interaction.response.send_message(embed=embed)
+    
 # ====================================================================
 # LEADERBOARD CODE BELOW — DO NOT TOUCH (working as-is)
 # ====================================================================
@@ -430,36 +435,31 @@ def build_spot_embed(spot):
     embed.set_image(url=HEADER_GIF)
     embed.set_thumbnail(url=spot.get("thumbnail") or VACANT_THUMB)
     return embed
-    async def refresh_leaderboard(guild: discord.Guild):
+
+async def refresh_leaderboard(guild: discord.Guild):
     lb = get_lb(guild.id)
     if not lb:
-        print("No leaderboard found")
         return
     channel = guild.get_channel(int(lb["channel_id"]))
     if channel is None:
-        print("Channel not found")
         return
+    
+    for mid in lb.get("message_ids", []):
+        try:
+            msg = await channel.fetch_message(int(mid))
+            await msg.delete()
+        except Exception:
+            pass
+            
     spots = lb["spots"]
-    message_ids = lb.get("message_ids", [])
-    new_message_ids = []
-    for index, i in enumerate(range(0, len(spots), 10)):
+    new_ids = []
+    for i in range(0, len(spots), 10):
         embeds = [build_spot_embed(s) for s in spots[i:i+10]]
-
-        if index < len(message_ids):
-            try:
-                msg = await channel.fetch_message(int(message_ids[index]))
-                await msg.edit(embeds=embeds)
-                new_message_ids.append(str(msg.id))
-                print(f"Edited {msg.id}")
-                continue
-            except Exception as e:
-                print(f"Edit failed: {e}")
         msg = await channel.send(embeds=embeds)
-        new_message_ids.append(str(msg.id))
-        print(f"Created {msg.id}")
-    lb["message_ids"] = new_message_ids
+        new_ids.append(str(msg.id))
+        
+    lb["message_ids"] = new_ids
     set_lb(guild.id, lb)
-     
 
 @bot.tree.command(name="createlb", description="Create a leaderboard. Range like 1-10 (max 50).")
 @app_commands.describe(spot_range="Range, e.g. 1-10", channel="Channel to post in")
@@ -484,7 +484,7 @@ async def createlb_cmd(interaction, spot_range: str, channel: discord.TextChanne
         "spots": spots,
     })
     await interaction.followup.send(f"✅ Leaderboard created in {channel.mention}.", ephemeral=True)
-    await refresh_leaderboard(interaction.guild)
+    asyncio.create_task(refresh_leaderboard(interaction.guild))
 
 @bot.tree.command(name="fillspot", description="Fill a leaderboard spot with player info")
 @app_commands.describe(
@@ -511,7 +511,7 @@ async def fillspot_cmd(interaction, spot: int, username: str, discord_handle: st
     }
     set_lb(interaction.guild.id, lb)
     await interaction.followup.send(f"✅ Spot {spot} updated.", ephemeral=True)
-    await refresh_leaderboard(interaction.guild)
+    asyncio.create_task(refresh_leaderboard(interaction.guild))
 
 @bot.tree.command(name="moveup", description="Move a spot up by 1")
 async def moveup_cmd(interaction, spot: int):
@@ -531,7 +531,7 @@ async def moveup_cmd(interaction, spot: int):
     
     set_lb(interaction.guild.id, lb)
     await interaction.followup.send(f"✅ Moved spot {spot} up.", ephemeral=True)
-    await refresh_leaderboard(interaction.guild)
+    asyncio.create_task(refresh_leaderboard(interaction.guild))
 
 @bot.tree.command(name="movedown", description="Move a spot down by 1")
 async def movedown_cmd(interaction, spot: int):
@@ -551,7 +551,7 @@ async def movedown_cmd(interaction, spot: int):
     
     set_lb(interaction.guild.id, lb)
     await interaction.followup.send(f"✅ Moved spot {spot} down.", ephemeral=True)
-    await refresh_leaderboard(interaction.guild)
+    asyncio.create_task(refresh_leaderboard(interaction.guild))
 
 @bot.tree.command(name="removeplayer", description="Reset a spot back to Vacant")
 async def removeplayer_cmd(interaction, spot: int):
@@ -566,7 +566,7 @@ async def removeplayer_cmd(interaction, spot: int):
         lb["spots"][idx] = vacant_spot(spot)
         set_lb(interaction.guild.id, lb)
         await interaction.followup.send(f"✅ Spot {spot} reset to Vacant.", ephemeral=True)
-        await refresh_leaderboard(interaction.guild)
+        asyncio.create_task(refresh_leaderboard(interaction.guild))
 
 
 if __name__ == "__main__":
