@@ -513,7 +513,7 @@ async def createlb_cmd(interaction, spot_range: str, channel: discord.TextChanne
         "spots": spots,
     })
     await interaction.followup.send(f"✅ Leaderboard created in {channel.mention}.", ephemeral=True)
-    asyncio.create_task(refresh_leaderboard(interaction.guild))
+    await refresh_leaderboard(interaction.guild)
 
 @bot.tree.command(name="fillspot", description="Fill a leaderboard spot with player info")
 @app_commands.describe(
@@ -540,7 +540,7 @@ async def fillspot_cmd(interaction, spot: int, username: str, discord_handle: st
     }
     set_lb(interaction.guild.id, lb)
     await interaction.followup.send(f"✅ Spot {spot} updated.", ephemeral=True)
-    asyncio.create_task(refresh_leaderboard(interaction.guild))
+    await refresh_leaderboard(interaction.guild)
 
 @bot.tree.command(name="moveup", description="Move a spot up by 1")
 async def moveup_cmd(interaction, spot: int):
@@ -560,7 +560,7 @@ async def moveup_cmd(interaction, spot: int):
     
     set_lb(interaction.guild.id, lb)
     await interaction.followup.send(f"✅ Moved spot {spot} up.", ephemeral=True)
-    asyncio.create_task(refresh_leaderboard(interaction.guild))
+    await refresh_leaderboard(interaction.guild)
 
 @bot.tree.command(name="movedown", description="Move a spot down by 1")
 async def movedown_cmd(interaction, spot: int):
@@ -580,7 +580,7 @@ async def movedown_cmd(interaction, spot: int):
     
     set_lb(interaction.guild.id, lb)
     await interaction.followup.send(f"✅ Moved spot {spot} down.", ephemeral=True)
-    asyncio.create_task(refresh_leaderboard(interaction.guild))
+    await refresh_leaderboard(interaction.guild)
 
 @bot.tree.command(name="removeplayer", description="Reset a spot back to Vacant")
 async def removeplayer_cmd(interaction, spot: int):
@@ -595,7 +595,7 @@ async def removeplayer_cmd(interaction, spot: int):
         lb["spots"][idx] = vacant_spot(spot)
         set_lb(interaction.guild.id, lb)
         await interaction.followup.send(f"✅ Spot {spot} reset to Vacant.", ephemeral=True)
-        asyncio.create_task(refresh_leaderboard(interaction.guild))
+        await refresh_leaderboard(interaction.guild)
 
 
 if __name__ == "__main__":
